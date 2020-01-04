@@ -590,12 +590,17 @@ typedef struct RedisModuleDigest {
 
 #define OBJ_SHARED_REFCOUNT INT_MAX
 typedef struct redisObject {
+    // 类型
     unsigned type:4;
+    // 编码
     unsigned encoding:4;
+    // 对象最后一次被访问的时间
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
+    // 引用计数
     int refcount;
+    // 指向实际值的指针
     void *ptr;
 } robj;
 
