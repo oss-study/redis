@@ -41,6 +41,7 @@
 
 const char *SDS_NOINIT = "SDS_NOINIT";
 
+// 根据 header 类型得到 header 大小。
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -57,6 +58,7 @@ static inline int sdsHdrSize(char type) {
     return 0;
 }
 
+// 选择 sds 结构体类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -86,6 +88,8 @@ static inline char sdsReqType(size_t string_size) {
  * You can print the string with printf() as there is an implicit \0 at the
  * end of the string. However the string is binary safe and can contain
  * \0 characters in the middle, as the length is stored in the sds header. */
+
+// 创建一个 sds 对象
 sds sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     sds s;
@@ -162,8 +166,10 @@ sds sdsdup(const sds s) {
 }
 
 /* Free an sds string. No operation is performed if 's' is NULL. */
+// free 方法真正释放内存，如果为 NULL 就返回，否则得到 Header 的首地址然后释放
 void sdsfree(sds s) {
     if (s == NULL) return;
+    // s[-1] 指向了 flags 字段
     s_free((char*)s-sdsHdrSize(s[-1]));
 }
 
@@ -190,6 +196,8 @@ void sdsupdatelen(sds s) {
  * However all the existing buffer is not discarded but set as free space
  * so that next append operations will not require allocations up to the
  * number of bytes previously available. */
+
+// 将len字段设置为0，但内存空间不释放。可以下次直接复用
 void sdsclear(sds s) {
     sdssetlen(s, 0);
     s[0] = '\0';
@@ -394,6 +402,8 @@ sds sdsgrowzero(sds s, size_t len) {
  *
  * After the call, the passed sds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+
+// 将 t 指向的长度为 len 的任意二进制数据追加到 sds 字符串 s 后面
 sds sdscatlen(sds s, const void *t, size_t len) {
     size_t curlen = sdslen(s);
 

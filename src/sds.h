@@ -40,7 +40,16 @@ const char *SDS_NOINIT;
 #include <stdarg.h>
 #include <stdint.h>
 
+// sds 是 char 类型指针
 typedef char *sds;
+
+// // 保存字符串对象的结构 
+// struct sdshdrX { // X 代表 bit 长度
+//     uintX_t len; // buf 中已占用空间的长度
+//     uintX_t alloc; // buf 的最大容量
+//     unsigned char flags; /* 3 lsb of type, 5 unused bits，标志位，用最低 3 个 bit 表示类型*/
+//     char buf[]; // 数据空间  
+// };
 
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
  * However is here to document the layout of type 5 SDS strings. */
@@ -80,11 +89,15 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_64 4
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
+// sh 变量指向 sdshdr 结构体起始位置
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+// 指向起始位置
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
+// 返回 sds 当前长度
 static inline size_t sdslen(const sds s) {
+    // s[-1] 指向了 flags 字段
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -101,6 +114,7 @@ static inline size_t sdslen(const sds s) {
     return 0;
 }
 
+// 返回 sds 可用的长度
 static inline size_t sdsavail(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -127,6 +141,7 @@ static inline size_t sdsavail(const sds s) {
     return 0;
 }
 
+// 设置 sds 长度
 static inline void sdssetlen(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -151,6 +166,7 @@ static inline void sdssetlen(sds s, size_t newlen) {
     }
 }
 
+// 增加 len 值
 static inline void sdsinclen(sds s, size_t inc) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -176,6 +192,7 @@ static inline void sdsinclen(sds s, size_t inc) {
     }
 }
 
+// 返回 sds 分配的总内存空间
 /* sdsalloc() = sdsavail() + sdslen() */
 static inline size_t sdsalloc(const sds s) {
     unsigned char flags = s[-1];
@@ -194,6 +211,7 @@ static inline size_t sdsalloc(const sds s) {
     return 0;
 }
 
+// 分配内存
 static inline void sdssetalloc(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
