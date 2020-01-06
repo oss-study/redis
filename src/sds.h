@@ -33,6 +33,7 @@
 #ifndef __SDS_H
 #define __SDS_H
 
+// 内存预分配的最大长度 1MB
 #define SDS_MAX_PREALLOC (1024*1024)
 const char *SDS_NOINIT;
 
@@ -40,7 +41,7 @@ const char *SDS_NOINIT;
 #include <stdarg.h>
 #include <stdint.h>
 
-// sds 是 char 类型指针
+// sds 是 char 类型指针，指向 buf[]
 typedef char *sds;
 
 // // 保存字符串对象的结构 
@@ -89,7 +90,7 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_64 4
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
-// sh 变量指向 sdshdr 结构体起始位置
+// sh 指向 sdshdr 起始位置
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
 // 指向起始位置
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
@@ -114,7 +115,7 @@ static inline size_t sdslen(const sds s) {
     return 0;
 }
 
-// 返回 sds 可用的长度
+// 返回 sds 可用的长度 = alloc - len
 static inline size_t sdsavail(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {

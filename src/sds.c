@@ -41,7 +41,7 @@
 
 const char *SDS_NOINIT = "SDS_NOINIT";
 
-// 根据 header 类型得到 header 大小。
+// 根据 sdsheader 类型得到 sdsheader 大小。
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -58,7 +58,7 @@ static inline int sdsHdrSize(char type) {
     return 0;
 }
 
-// 选择 sds 结构体类型
+// 根据长度选择 sdsheader 类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -93,13 +93,15 @@ static inline char sdsReqType(size_t string_size) {
 sds sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     sds s;
+    // 选择使用哪种长度类型的结构体
     char type = sdsReqType(initlen);
     /* Empty strings are usually created in order to append. Use type 8
      * since type 5 is not good at this. */
     if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
+    // 获取结构体长度
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
-
+    // 分配内存： sdsheader 长度 + 字符串长度 + 1
     sh = s_malloc(hdrlen+initlen+1);
     if (init==SDS_NOINIT)
         init = NULL;
@@ -107,6 +109,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
         memset(sh, 0, hdrlen+initlen+1);
     if (sh == NULL) return NULL;
     s = (char*)sh+hdrlen;
+    // fp 就是 flags 字段，类型判断
     fp = ((unsigned char*)s)-1;
     switch(type) {
         case SDS_TYPE_5: {
@@ -144,6 +147,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
     }
     if (initlen && init)
         memcpy(s, init, initlen);
+    // 追加空字符
     s[initlen] = '\0';
     return s;
 }
@@ -197,7 +201,7 @@ void sdsupdatelen(sds s) {
  * so that next append operations will not require allocations up to the
  * number of bytes previously available. */
 
-// 将len字段设置为0，但内存空间不释放。可以下次直接复用
+// 将len字段设置为0，但并不释放内存空间，可以下次直接复用：惰性释放
 void sdsclear(sds s) {
     sdssetlen(s, 0);
     s[0] = '\0';
@@ -209,6 +213,8 @@ void sdsclear(sds s) {
  *
  * Note: this does not change the *length* of the sds string as returned
  * by sdslen(), but only the free buffer space we have. */
+
+// sds 扩容，用于字符追加
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
     size_t avail = sdsavail(s);
@@ -217,6 +223,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     int hdrlen;
 
     /* Return ASAP if there is enough space left. */
+    // 如果原来字符串中的 free 空间够用（avail >= addlen），那么它什么也不做，直接返回。
     if (avail >= addlen) return s;
 
     len = sdslen(s);
@@ -338,6 +345,7 @@ void *sdsAllocPtr(sds s) {
  * ... check for nread <= 0 and handle it ...
  * sdsIncrLen(s, nread);
  */
+// 增加 len 
 void sdsIncrLen(sds s, ssize_t incr) {
     unsigned char flags = s[-1];
     size_t len;
