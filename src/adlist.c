@@ -38,6 +38,7 @@
  * by the user before to call AlFreeList().
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
+// 创建链表
 list *listCreate(void)
 {
     struct list *list;
@@ -53,6 +54,7 @@ list *listCreate(void)
 }
 
 /* Remove all the elements from the list without destroying the list itself. */
+// 清空所有节点但不释放内存
 void listEmpty(list *list)
 {
     unsigned long len;
@@ -73,6 +75,7 @@ void listEmpty(list *list)
 /* Free the whole list.
  *
  * This function can't fail. */
+// 释放链表及其节点
 void listRelease(list *list)
 {
     listEmpty(list);
@@ -85,6 +88,7 @@ void listRelease(list *list)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+// 在表头加入元素
 list *listAddNodeHead(list *list, void *value)
 {
     listNode *node;
@@ -111,6 +115,7 @@ list *listAddNodeHead(list *list, void *value)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+// 在表尾加入元素
 list *listAddNodeTail(list *list, void *value)
 {
     listNode *node;
@@ -131,6 +136,14 @@ list *listAddNodeTail(list *list, void *value)
     return list;
 }
 
+/*
+ * 创建一个包含值 value 的新节点，并将它插入到 old_node 之前或之后
+ *
+ * 如果 after 为 0 ，将新节点插入到 old_node 之前。
+ * 如果 after 为 1 ，将新节点插入到 old_node 之后。
+ *
+ * T = O(1)
+ */
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
     listNode *node;
 
@@ -164,6 +177,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * It's up to the caller to free the private value of the node.
  *
  * This function can't fail. */
+// 删除指定节点
 void listDelNode(list *list, listNode *node)
 {
     if (node->prev)

@@ -33,27 +33,31 @@
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
+// 双端链表节点
 typedef struct listNode {
-    struct listNode *prev;
-    struct listNode *next;
-    void *value;
+    struct listNode *prev; // 前置节点指针
+    struct listNode *next; // 后置节点指针
+    void *value;           // 该节点值指针
 } listNode;
 
+// 双端链表迭代器 
 typedef struct listIter {
-    listNode *next;
-    int direction;
+    listNode *next; // 当前迭代到的节点
+    int direction; // 迭代方向
 } listIter;
 
+// 双端链表结构
 typedef struct list {
-    listNode *head;
-    listNode *tail;
-    void *(*dup)(void *ptr);
-    void (*free)(void *ptr);
-    int (*match)(void *ptr, void *key);
-    unsigned long len;
+    listNode *head; // 表头节点
+    listNode *tail; // 表尾节点
+    void *(*dup)(void *ptr); // 节点值复制函数
+    void (*free)(void *ptr); // 节点释放函数
+    int (*match)(void *ptr, void *key); // 节点比较函数
+    unsigned long len; // 链表所包含的节点数量
 } list;
 
 /* Functions implemented as macros */
+// 以下：T = O(1)
 #define listLength(l) ((l)->len)
 #define listFirst(l) ((l)->head)
 #define listLast(l) ((l)->tail)
@@ -61,12 +65,18 @@ typedef struct list {
 #define listNextNode(n) ((n)->next)
 #define listNodeValue(n) ((n)->value)
 
+// 将链表 l 的值复制函数设置为 m
 #define listSetDupMethod(l,m) ((l)->dup = (m))
+// 将链表 l 的值释放函数设置为 m
 #define listSetFreeMethod(l,m) ((l)->free = (m))
+// 将链表的对比函数设置为 m
 #define listSetMatchMethod(l,m) ((l)->match = (m))
 
+// 返回给定链表的值复制函数
 #define listGetDupMethod(l) ((l)->dup)
+// 返回给定链表的值释放函数
 #define listGetFreeMethod(l) ((l)->free)
+// 返回给定链表的值对比函数
 #define listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
@@ -89,7 +99,9 @@ void listRotate(list *list);
 void listJoin(list *l, list *o);
 
 /* Directions for iterators */
+// 迭代器方向：从表头向表尾进行迭代
 #define AL_START_HEAD 0
+// 从表尾到表头进行迭代
 #define AL_START_TAIL 1
 
 #endif /* __ADLIST_H__ */
