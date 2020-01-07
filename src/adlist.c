@@ -136,20 +136,15 @@ list *listAddNodeTail(list *list, void *value)
     return list;
 }
 
-/*
- * 创建一个包含值 value 的新节点，并将它插入到 old_node 之前或之后
- *
- * 如果 after 为 0 ，将新节点插入到 old_node 之前。
- * 如果 after 为 1 ，将新节点插入到 old_node 之后。
- *
- * T = O(1)
- */
+// 创建一个新节点，并将它插入到 old_node 之前或之后，值为 value
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
     listNode *node;
 
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
+    // 如果 after 为 1 ，将新节点插入到 old_node 之后;
+    // 如果 after 为 0 ，将新节点插入到 old_node 之前
     if (after) {
         node->prev = old_node;
         node->next = old_node->next;
@@ -273,6 +268,7 @@ list *listDup(list *orig)
     copy->free = orig->free;
     copy->match = orig->match;
     listRewind(orig, &iter);
+    // 迭代整个输入链表
     while((node = listNext(&iter)) != NULL) {
         void *value;
 
@@ -301,6 +297,7 @@ list *listDup(list *orig)
  * On success the first matching node pointer is returned
  * (search starts from head). If no matching node exists
  * NULL is returned. */
+// 查找链表中和 key 值相等的节点
 listNode *listSearchKey(list *list, void *key)
 {
     listIter iter;
@@ -326,9 +323,11 @@ listNode *listSearchKey(list *list, void *key)
  * and so on. Negative integers are used in order to count
  * from the tail, -1 is the last element, -2 the penultimate
  * and so on. If the index is out of range NULL is returned. */
+// 返回给定位置上的值，类似于数组下标索引
 listNode *listIndex(list *list, long index) {
     listNode *n;
 
+    // 如果索引 < 0，从表尾开始查找
     if (index < 0) {
         index = (-index)-1;
         n = list->tail;
