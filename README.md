@@ -1,4 +1,4 @@
-Redis6-RC1 源码分析，添加注释中
+当前版本 Redis6-RC1，源码学习中，正在添加[注释](READMEZH.md)，会根据官方更新合并分支
 
 This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
 

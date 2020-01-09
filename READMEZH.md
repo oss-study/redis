@@ -1,0 +1,1 @@
+参考：[redis-3.0-annotated](https://github.com/huangz1990/redis-3.0-annotated)、网络上的相关分析文章、《Redis 设计与实现》等资料。
