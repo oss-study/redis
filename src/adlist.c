@@ -192,6 +192,14 @@ void listDelNode(list *list, listNode *node)
  * call to listNext() will return the next element of the list.
  *
  * This function can't fail. */
+/*
+ * 为给定链表创建一个迭代器，
+ * 之后每次对这个迭代器调用 listNext 都返回被迭代到的链表节点
+ *
+ * direction 参数决定了迭代器的迭代方向：
+ *
+ * T = O(1)
+ */
 listIter *listGetIterator(list *list, int direction)
 {
     listIter *iter;
@@ -206,11 +214,20 @@ listIter *listGetIterator(list *list, int direction)
 }
 
 /* Release the iterator memory */
+// 释放迭代器
 void listReleaseIterator(listIter *iter) {
     zfree(iter);
 }
 
 /* Create an iterator in the list private iterator structure */
+/*
+ * 将迭代器的方向设置为 AL_START_HEAD ，
+ * 并将迭代指针重新指向表头节点。
+ *
+ * T = O(1)
+ * 
+ * 下同
+ */
 void listRewind(list *list, listIter *li) {
     li->next = list->head;
     li->direction = AL_START_HEAD;
@@ -256,6 +273,19 @@ listNode *listNext(listIter *iter)
  * the original node is used as value of the copied node.
  *
  * The original list both on success or error is never modified. */
+/*
+ * 复制整个链表。
+ *
+ * 复制成功返回输入链表的副本，
+ * 如果因为内存不足而造成复制失败，返回 NULL 。
+ *
+ * 如果链表有设置值复制函数 dup ，那么对值的复制将使用复制函数进行，
+ * 否则，新节点将和旧节点共享同一个指针。
+ *
+ * 无论复制是成功还是失败，输入节点都不会修改。
+ *
+ * T = O(N)
+ */
 list *listDup(list *orig)
 {
     list *copy;
@@ -323,7 +353,7 @@ listNode *listSearchKey(list *list, void *key)
  * and so on. Negative integers are used in order to count
  * from the tail, -1 is the last element, -2 the penultimate
  * and so on. If the index is out of range NULL is returned. */
-// 返回给定位置上的值，类似于数组下标索引
+// 返回给定位置 index 的值，类似于数组下标索引
 listNode *listIndex(list *list, long index) {
     listNode *n;
 
@@ -340,6 +370,7 @@ listNode *listIndex(list *list, long index) {
 }
 
 /* Rotate the list removing the tail node and inserting it to the head. */
+// 取出链表的表尾节点，并将它移动到表头。T= O(1)
 void listRotate(list *list) {
     listNode *tail = list->tail;
 
@@ -357,6 +388,7 @@ void listRotate(list *list) {
 
 /* Add all the elements of the list 'o' at the end of the
  * list 'l'. The list 'other' remains empty but otherwise valid. */
+// 将链表 o 的元素移至 l，并将 o 清空(猜测原注释中的 other 就是 o)
 void listJoin(list *l, list *o) {
     if (o->head)
         o->head->prev = l->tail;
@@ -367,6 +399,7 @@ void listJoin(list *l, list *o) {
         l->head = o->head;
 
     if (o->tail) l->tail = o->tail;
+    // l 长度简单相加
     l->len += o->len;
 
     /* Setup other as an empty list. */
