@@ -10,3 +10,4 @@
 
 [ziplist.c](./src/ziplist.c)：压缩列表
 
+[dict.h](./src/dict.h)：字典
