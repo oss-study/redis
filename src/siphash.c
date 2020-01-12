@@ -39,6 +39,9 @@
       the function in the new form (returing an uint64_t) using just the
       relevant test vector.
  */
+
+// 一种非加密 64 位哈希算法，用于 dict
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
