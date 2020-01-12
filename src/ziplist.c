@@ -1197,6 +1197,10 @@ unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char 
  * Also update *p in place, to be able to iterate over the
  * ziplist, while deleting entries. */
 unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
+    // 因为 __ziplistDelete 时会对 zl 进行内存重分配
+    // 而内存充分配可能会改变 zl 的内存地址
+    // 所以这里需要记录到达 *p 的偏移量
+    // 这样在删除节点之后就可以通过偏移量来将 *p 还原到正确的位置
     size_t offset = *p-zl;
     zl = __ziplistDelete(zl,*p,1);
 
@@ -1209,6 +1213,7 @@ unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
 }
 
 /* Delete a range of entries from the ziplist. */
+// 从 index 索引指定的节点开始，连续地从 zl 中删除 num 个节点，T = O(N^2)
 unsigned char *ziplistDeleteRange(unsigned char *zl, int index, unsigned int num) {
     unsigned char *p = ziplistIndex(zl,index);
     return (p == NULL) ? zl : __ziplistDelete(zl,p,num);
@@ -1222,6 +1227,7 @@ unsigned int ziplistCompare(unsigned char *p, unsigned char *sstr, unsigned int 
     long long zval, sval;
     if (p[0] == ZIP_END) return 0;
 
+    //  取出节点
     zipEntry(p, &entry);
     if (ZIP_IS_STR(entry.encoding)) {
         /* Raw compare */
@@ -1243,6 +1249,8 @@ unsigned int ziplistCompare(unsigned char *p, unsigned char *sstr, unsigned int 
 
 /* Find pointer to the entry equal to the specified entry. Skip 'skip' entries
  * between every comparison. Returns NULL when the field could not be found. */
+// 寻找节点值和 vstr 相等的列表节点，并返回该节点的指针，如果没有则返回 NULL
+// 每次比对之前都跳过 skip 个节点。 T = O(N^2)
 unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int vlen, unsigned int skip) {
     int skipcnt = 0;
     unsigned char vencoding = 0;
@@ -1266,6 +1274,9 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
                 /* Find out if the searched field can be encoded. Note that
                  * we do it only the first time, once done vencoding is set
                  * to non-zero and vll is set to the integer value. */
+                // 因为传入值有可能被编码了，
+                // 所以当第一次进行值对比时，程序会对传入值进行解码
+                // 这个解码操作只会进行一次
                 if (vencoding == 0) {
                     if (!zipTryEncoding(vstr, vlen, &vll, &vencoding)) {
                         /* If the entry can't be encoded we set it to
@@ -1303,10 +1314,13 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
 }
 
 /* Return length of ziplist. */
+// 返回 ziplist 中的节点个数，T = O(N) 或 T = O(1)
 unsigned int ziplistLen(unsigned char *zl) {
     unsigned int len = 0;
+    // 节点数小于 UINT16_MAX 时，T = O(1)
     if (intrev16ifbe(ZIPLIST_LENGTH(zl)) < UINT16_MAX) {
         len = intrev16ifbe(ZIPLIST_LENGTH(zl));
+    // 节点数大于 UINT16_MAX 时，需要遍历整个列表才能计算出节点数，T = O(N)
     } else {
         unsigned char *p = zl+ZIPLIST_HEADER_SIZE;
         while (*p != ZIP_END) {
@@ -1321,10 +1335,12 @@ unsigned int ziplistLen(unsigned char *zl) {
 }
 
 /* Return ziplist blob size in bytes. */
+// T = O(1)
 size_t ziplistBlobLen(unsigned char *zl) {
     return intrev32ifbe(ZIPLIST_BYTES(zl));
 }
 
+// 打印 ziplist 的一些相关信息
 void ziplistRepr(unsigned char *zl) {
     unsigned char *p;
     int index = 0;
