@@ -335,7 +335,9 @@ typedef long long ustime_t; /* microsecond time type. */
 /* Anti-warning macro... */
 #define UNUSED(V) ((void) V)
 
+// skiplist 的最大层级数
 #define ZSKIPLIST_MAXLEVEL 64 /* Should be enough for 2^64 elements */
+// 跳跃表层级出现的概率
 #define ZSKIPLIST_P 0.25      /* Skiplist P = 1/4 */
 
 /* Append only defines */
@@ -862,6 +864,7 @@ struct sharedObjectsStruct {
 };
 
 /* ZSETs use a specialized version of Skiplists */
+// 跳跃表节点
 typedef struct zskiplistNode {
     // 成员对象
     sds ele;
@@ -869,7 +872,7 @@ typedef struct zskiplistNode {
     double score;
     // 后退指针
     struct zskiplistNode *backward;
-    // 层
+    // 层结构体
     struct zskiplistLevel {
         // 前进指针
         struct zskiplistNode *forward;
@@ -878,15 +881,17 @@ typedef struct zskiplistNode {
     } level[];
 } zskiplistNode;
 
+// 跳跃表
 typedef struct zskiplist {
-    // 表头节点和表尾节点
+    // 指向表头节点和表尾节点
     struct zskiplistNode *header, *tail;
-    // 表中节点的数量
+    // 表中节点的数量，不包含表头节点
     unsigned long length;
     // 表中层数最大的节点的层数
     int level;
 } zskiplist;
 
+// 有序集合
 typedef struct zset {
     dict *dict;
     zskiplist *zsl;
@@ -1876,7 +1881,9 @@ typedef struct {
 
 /* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. */
 typedef struct {
+    // 最小最大值
     sds min, max;     /* May be set to shared.(minstring|maxstring) */
+    // 是否包括最小值/最大值
     int minex, maxex; /* are min or max exclusive? */
 } zlexrangespec;
 

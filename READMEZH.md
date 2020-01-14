@@ -11,3 +11,5 @@
 [ziplist.c](./src/ziplist.c)：压缩列表
 
 [dict.h](./src/dict.h)：字典
+
+[server.h](./src/server.h)：跳跃表
