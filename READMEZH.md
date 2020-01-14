@@ -13,3 +13,5 @@
 [dict.h](./src/dict.h)：字典
 
 [server.h](./src/server.h)：跳跃表
+
+[intset.h](./src/intset.h)：跳跃表
