@@ -32,6 +32,7 @@
 #define __INTSET_H
 #include <stdint.h>
 
+// 整数集合定义
 typedef struct intset {
     // 编码方式
     uint32_t encoding;
