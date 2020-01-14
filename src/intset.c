@@ -362,8 +362,6 @@ int64_t intsetRandom(intset *is) {
  *
  * 如果 pos 没超出数组的索引范围，那么返回 1 ，如果超出索引，那么返回 0 。
  *
- * p.s. 上面原文的文档说这个函数用于设置值，这是错误的。
- *
  * T = O(1)
  */
 uint8_t intsetGet(intset *is, uint32_t pos, int64_t *value) {
