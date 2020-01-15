@@ -83,6 +83,7 @@ void zlibc_free(void *ptr) {
     atomicDecr(used_memory,__n); \
 } while(0)
 
+// 已占用的内存大小
 static size_t used_memory = 0;
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 

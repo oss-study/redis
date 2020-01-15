@@ -77,20 +77,31 @@
 #define HAVE_DEFRAG
 #endif
 
+// 在C语言中，内存分配的函数有三个：malloc、free、relloc
+// Redis 中对内存的分配又做了一写小小封装。
+// 调用 malloc 申请内存，大小为 size 个字节数
 void *zmalloc(size_t size);
+// 调用系统调用 calloc 申请内存
 void *zcalloc(size_t size);
+// 将内存空间调整为 size 大小
 void *zrealloc(void *ptr, size_t size);
+// 释放内存空间并更新 used_memory
 void zfree(void *ptr);
+// 字符串复制
 char *zstrdup(const char *s);
+// 获取当前已占用的内存大小
 size_t zmalloc_used_memory(void);
+// 可自定义设置内存溢出的处理方法
 void zmalloc_set_oom_handler(void (*oom_handler)(size_t));
 size_t zmalloc_get_rss(void);
 int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *resident);
 void set_jemalloc_bg_thread(int enable);
 int jemalloc_purge();
+// 获取私有的脏数据大小
 size_t zmalloc_get_private_dirty(long pid);
 size_t zmalloc_get_smap_bytes_by_field(char *field, long pid);
 size_t zmalloc_get_memory_size(void);
+// 系统释放内存方法
 void zlibc_free(void *ptr);
 
 #ifdef HAVE_DEFRAG
