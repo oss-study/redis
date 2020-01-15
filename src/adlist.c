@@ -194,7 +194,7 @@ void listDelNode(list *list, listNode *node)
  * This function can't fail. */
 /*
  * 为给定链表创建一个迭代器，
- * 之后每次对这个迭代器调用 listNext 都返回被迭代到的链表节点
+ * 当迭代器调用 listNext 函数时返回被迭代到的链表节点
  *
  * direction 参数决定了迭代器的迭代方向：
  *
@@ -370,13 +370,16 @@ listNode *listIndex(list *list, long index) {
 }
 
 /* Rotate the list removing the tail node and inserting it to the head. */
+// 一个旋转 list 的操作，实现效果： 1 → 2 → 3 → 4 变成 4 → 1 → 2 → 3
 // 取出链表的表尾节点，并将它移动到表头。T= O(1)
 void listRotate(list *list) {
     listNode *tail = list->tail;
 
+    // 1 个节点不需要 rotate
     if (listLength(list) <= 1) return;
 
     /* Detach current tail */
+    // 分离尾部节点
     list->tail = tail->prev;
     list->tail->next = NULL;
     /* Move it as head */
