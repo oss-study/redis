@@ -72,10 +72,11 @@
  *
  * <prevlen> <encoding> <entry-data>
  *
- * 有时 <encoding> 部分就可以表达节点本身，例如很小的整型数据，所以 <entry-data> 可以省略。
  * Sometimes the encoding represents the entry itself, like for small integers
  * as we'll see later. In such a case the <entry-data> part is missing, and we
  * could have just:
+ * 
+ * 有时 <encoding> 部分就可以表达节点本身，例如很小的整型数据，所以 <entry-data> 可以省略：
  *
  * <prevlen> <encoding>
  *
@@ -86,7 +87,7 @@
  * set to 254 (FE) to indicate a larger value is following. The remaining 4
  * bytes take the length of the previous entry as value.
  * 
- * <prevlen> 前置节点长度的编码方式如下：
+ * <prevlen> 保存着前置节点长度，其编码方式如下：
  * 1) 如果前置节点的长度小于 254 字节，只使用 1 个字节来保存这个长度值；
  * 2) 如果前置节点的长度大于等于 254 字节，将使用 5 个字节来保存这个长度值：
  *    a) 第 1 个字节的值将被设为 254 ，用于标识这是一个 5 字节长的长度值。
@@ -111,7 +112,7 @@
  * different types and encodings is as follows. The first byte is always enough
  * to determine the kind of entry.
  * 
- * <encoding> 的编码方式取决于节点存储的值，
+ * <encoding> 的编码方式取决于节点存储的值：
  * 如果节点保存的是字符串值，<encoding> 的前2位标识字符串长度类型，
  * 后面跟着的内容则是字符串的实际长度。
  *
@@ -238,7 +239,7 @@
 #include "redisassert.h"
 
 #define ZIP_END 255         /* Special "end of ziplist" entry. */
-// 前置节点最大表示长度，超出这个值需要遍历查询
+// 单字节情况下，所能表示的前置节点最大长度
 #define ZIP_BIG_PREVLEN 254 /* Max number of bytes of the previous entry, for
                                the "prevlen" field prefixing each entry, to be
                                represented with just a single byte. Otherwise
