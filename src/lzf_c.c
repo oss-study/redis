@@ -38,6 +38,8 @@
 
 #define HSIZE (1 << (HLOG))
 
+// 解析参考：https://dirtysalt.github.io/html/lzf.html
+
 /*
  * don't play with this unless you benchmark!
  * the data format is not dependent on the hash function.
@@ -71,8 +73,11 @@
 # define IDX(h) ((h) & (HSIZE - 1))
 #endif
 
+// literal 最大长度
 #define        MAX_LIT        (1 <<  5)
+// offset 最大长度
 #define        MAX_OFF        (1 << 13)
+// ref 最大长度. 看 long backref 定义是 L+8 ocets. 而 L 最长可以是 8bits
 #define        MAX_REF        ((1 << 8) + (1 << 3))
 
 #if __GNUC__ >= 3
@@ -87,6 +92,8 @@
 #define expect_true(expr)  expect ((expr) != 0, 1)
 
 /*
+ * 压缩数据节(data section)有三种标识：1).literal 2).short backref 3).long backref.
+ * 
  * compressed format
  *
  * 000LLLLL <L+1>    ; literal, L+1=1..33 octets
@@ -95,6 +102,10 @@
  *
  */
 
+// in & out的内存区间不能重叠
+// 如果out_len不够的话，返回0；否则返回压缩后大小。
+// 所以使用上可以out_len = in_len-1. 如果压缩之后空间变大的话那么直接使用原空间
+// 不同版本lzf压缩同一个数据得到的结果不一定相同，取决于寻找 repeatable string 的方法。但是均可以使用同样的解压缩函数解压。
 unsigned int
 lzf_compress (const void *const in_data, unsigned int in_len,
 	      void *out_data, unsigned int out_len
@@ -131,26 +142,32 @@ lzf_compress (const void *const in_data, unsigned int in_len,
     return 0;
 
 #if INIT_HTAB
+  // 初始化 hashtable
   memset (htab, 0, sizeof (htab));
 #endif
-
+  // 这里空出1字节是为了处理 literal
   lit = 0; op++; /* start run */
 
   hval = FRST (ip);
   while (ip < in_end - 2)
     {
       LZF_HSLOT *hslot;
-
+      // hval = (ip[-1] << 24) | (ip[0] << 16) | (ip[1] << 8) | ip[2]
       hval = NEXT (hval, ip);
+        // 然后查找 hashtable 是否存在潜在相同的串，记为ref; 同时更新 hashtable 这个 entry 为 ip.
+        // 这里更新 hashtable entry 非常重要，因为 offset 是有限制的。如果不更新的话，那么超过 offset 长度限制的串
+        // 便不能被匹配以及压缩了。
       hslot = htab + IDX (hval);
       ref = *hslot + LZF_HSLOT_BIAS; *hslot = ip - LZF_HSLOT_BIAS;
 
       if (1
 #if INIT_HTAB
+          // 这里真实偏移是(off+1). 但是只存储off.(see backref)
           && ref < ip /* the next test will actually take care of this, but this is faster */
 #endif
           && (off = ip - ref - 1) < MAX_OFF
           && ref > (u8 *)in_data
+          // 检查 ref 和 ip 头三个字节是否相同. 至少3个字节才会压缩
           && ref[2] == ip[2]
 #if STRICT_ALIGN
           && ((ref[1] << 8) | ref[0]) == ((ip[1] << 8) | ip[0])
@@ -162,12 +179,15 @@ lzf_compress (const void *const in_data, unsigned int in_len,
           /* match found at *ref++ */
           unsigned int len = 2;
           unsigned int maxlen = in_end - ip - len;
+          // 最长可以 ref 多少字节
           maxlen = maxlen > MAX_REF ? MAX_REF : maxlen;
 
+          // 保守估计至少3个字节(long backref). 这里+1为下一轮查找literal准备
           if (expect_false (op + 3 + 1 >= out_end)) /* first a faster conservative test */
             if (op - !lit + 3 + 1 >= out_end) /* second the exact but rare test */
               return 0;
 
+          // 将之前的 literal flush 出来。这个后面会给出解释为什么可以这么做
           op [- lit - 1] = lit - 1; /* stop run */
           op -= !lit; /* undo run if length is zero */
 
@@ -203,6 +223,8 @@ lzf_compress (const void *const in_data, unsigned int in_len,
               break;
             }
 
+          // ip和ref公共串长度为 len-1.(比较 tricky, 需要考虑一下)
+          // 注意这里如果ip和ref存在 overlapping 也没有任何问题
           len -= 2; /* len is now #octets - 1 */
           ip++;
 
@@ -218,13 +240,18 @@ lzf_compress (const void *const in_data, unsigned int in_len,
 
           *op++ = off;
 
+          // 至此一轮repeatable string查找完毕。为下一轮literal准备
           lit = 0; op++; /* start run */
 
+          // 输入串向前前进len+1字节
           ip += len + 1;
 
           if (expect_false (ip >= in_end - 2))
             break;
 
+            // 如果是ULTRA_FAST回退一个字节做索引
+            // 如果是VERY FAST回退两个字节
+            // 普通模式的话会对这一个输入串做索引
 #if ULTRA_FAST || VERY_FAST
           --ip;
 # if VERY_FAST && !ULTRA_FAST
@@ -253,6 +280,7 @@ lzf_compress (const void *const in_data, unsigned int in_len,
           while (len--);
 #endif
         }
+      // 如果没有找到公共串，那么输出 literal
       else
         {
           /* one more literal byte we must copy */
@@ -272,6 +300,7 @@ lzf_compress (const void *const in_data, unsigned int in_len,
   if (op + 3 > out_end) /* at most 3 bytes can be missing here */
     return 0;
 
+  // 如果剩余串很短的话那么通用按照literal来处理。
   while (ip < in_end)
     {
       lit++; *op++ = *ip++;

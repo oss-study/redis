@@ -43,6 +43,14 @@
 # include "lzf.h"
 #endif
 
+// HLOG 用于查找 repeatable string 的 hashtable 大小。 1 << HLOG
+// VERY_FAST / ULTRA_FAST 控制查找repeatble string策略
+// LZF_USE_OFFSETS 决定 hashtable 存储偏移还是存储 pointer。为了方便阅读代码，这里我们假设存储偏移。
+// define LZF_HSLOT_BIAS ((const u8 *)in_data)
+// typedef unsigned int LZF_HSLOT;
+// typedef LZF_HSLOT LZF_STATE[1 << (HLOG)]; # hashtable 定义
+// STRICT_ALIGN input数据是否对齐
+
 /*
  * Size of hashtable is (1 << HLOG) * sizeof (char *)
  * decompression is independent of the hash table size
