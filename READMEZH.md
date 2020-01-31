@@ -10,8 +10,10 @@
 
 [ziplist.c](./src/ziplist.c)：压缩列表
 
-[dict.h](./src/dict.h)：字典
+[quicklist.c](./src/quicklist.c)：快速链表
 
 [server.h](./src/server.h)：跳跃表
 
-[intset.h](./src/intset.h)：跳跃表
+[dict.h](./src/dict.h)：字典
+
+[intset.h](./src/intset.h)：整数集合
