@@ -125,12 +125,14 @@ zskiplist *zslCreate(void) {
 /* Free the specified skiplist node. The referenced SDS string representation
  * of the element is freed too, unless node->ele is set to NULL before calling
  * this function. */
+// 释放一个节点
 void zslFreeNode(zskiplistNode *node) {
     sdsfree(node->ele);
     zfree(node);
 }
 
 /* Free a whole skiplist. */
+// 释放整个 skiplist
 void zslFree(zskiplist *zsl) {
     zskiplistNode *node = zsl->header->level[0].forward, *next;
 
@@ -164,10 +166,14 @@ int zslRandomLevel(void) {
  * of the passed SDS string 'ele'. */
 // 插入一个新节点，调用者需确保没有重复插入元素
 zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
+    // 每一层的最后一个小于 score 的节点，因为插入节点需要修改每一层这个节点的上一个节点的信息(跨度)，所以需要保留
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+    //记录每一层插入节点的上一个节点在 skiplist 中的排名
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
+    // 变量 i 作为 zslInsert 函数里循环的索引值,变量 level 为插入节点的层数(不是层数的索引）
     int i, level;
 
+    // 判断参数是否是NAN(非数字)
     serverAssert(!isnan(score));
     x = zsl->header;
     for (i = zsl->level-1; i >= 0; i--) {
@@ -181,6 +187,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
+        // 当前层的最后一个小于score的节点
         update[i] = x;
     }
     /* we assume the element is not already inside, since we allow duplicated
@@ -190,9 +197,11 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     // zslInsert() 的调用者会确保同分值且同成员的元素不会出现，所以这里不需要进一步进行检查。
     level = zslRandomLevel();
     if (level > zsl->level) {
+        // 如果新节点层数大于之前跳跃表的层数，所以要修改这些头结点的信息
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
             update[i] = zsl->header;
+            //高出部分的头结点在还没插入当前节点时跨度应该是整张表，插入之后会重新更新这个值
             update[i]->level[i].span = zsl->length;
         }
         zsl->level = level;
@@ -203,6 +212,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
         update[i]->level[i].forward = x;
 
         /* update span covered by update[i] as x is inserted here */
+        // rank[0] 是 x 在第0层的上一个节点的实际排名，rank[i]是 x 在第i层的上一个节点的实际排名，两者的差值为 x 在第i层的上一个节点与x之间的距离
         x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
@@ -218,7 +228,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     else
         zsl->tail = x;
     zsl->length++;
-    return x;
+    return x;   
 }
 
 /* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */

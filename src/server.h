@@ -868,7 +868,7 @@ struct sharedObjectsStruct {
 typedef struct zskiplistNode {
     // 成员对象
     sds ele;
-    // 分值
+    // 成员分值
     double score;
     // 后退指针
     struct zskiplistNode *backward;
@@ -885,9 +885,9 @@ typedef struct zskiplistNode {
 typedef struct zskiplist {
     // 指向表头节点和表尾节点
     struct zskiplistNode *header, *tail;
-    // 表中节点的数量，不包含表头节点
+    // 节点的数量，不包含表头节点
     unsigned long length;
-    // 表中层数最大的节点的层数
+    // 节点的最大层数，不包含表头节点
     int level;
 } zskiplist;
 
