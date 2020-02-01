@@ -134,6 +134,7 @@ void zslFreeNode(zskiplistNode *node) {
 /* Free a whole skiplist. */
 // 释放整个 skiplist
 void zslFree(zskiplist *zsl) {
+    // 任何一个节点都有 level[0]，所以迭代 level[0] 来删除所有节点
     zskiplistNode *node = zsl->header->level[0].forward, *next;
 
     zfree(zsl->header);
@@ -233,16 +234,22 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
 
 /* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */
 // 内部函数，被 zslDelete 、 zslDeleteRangeByScore 和 zslDeleteByRank 函数调用。
+// x 为要删除的节点
+// update 为每一层 x 的上一个节点(为了更新 x 上一个节点的 forward 和 span 属性)
 void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
     int i;
     for (i = 0; i < zsl->level; i++) {
+        // 当前层有 x 节点
         if (update[i]->level[i].forward == x) {
             update[i]->level[i].span += x->level[i].span - 1;
+            // 跨过 x 节点
             update[i]->level[i].forward = x->level[i].forward;
         } else {
+            // 当前层没有 x 节点
             update[i]->level[i].span -= 1;
         }
     }
+    // 是否是 tail 节点
     if (x->level[0].forward) {
         x->level[0].forward->backward = x->backward;
     } else {
@@ -261,8 +268,9 @@ void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
  * it is not freed (but just unlinked) and *node is set to the node pointer,
  * so that it is possible for the caller to reuse the node (including the
  * referenced SDS string at node->ele). */
-/* 从跳跃表 zsl 中删除包含给定节点 score 并且带有指定对象 obj 的节点。
- *
+/* 从跳跃表 zsl 中删除包含给定节点 score 并且带有指定对象 ele 的节点。
+ * 并释放节点内存
+ * 
  * T_wrost = O(N^2), T_avg = O(N log N)
  */
 int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
@@ -283,7 +291,7 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
     }
     /* We may have multiple elements with the same score, what we need
      * is to find the element with both the right score and object. */
-    // 检查找到的元素 x ，只有在它的分值和对象都相同时，才将它删除。
+    // 检查找到的元素 x ，只有在它的 score 和 ele 都相同时，才将它删除。
     x = x->level[0].forward;
     if (x && score == x->score && sdscmp(x->ele,ele) == 0) {
         zslDeleteNode(zsl, x, update);
@@ -378,19 +386,23 @@ int zslValueLteMax(double value, zrangespec *spec) {
 /* Returns if there is a part of the zset is in range. */
 /* 如果给定的分值范围包含在跳跃表的分值范围之内，
  * 那么返回 1 ，否则返回 0 。
- *
+ * 这里有个前提，所有节点的 score 都相等。
+ *  
  * T = O(1)
  */
 int zslIsInRange(zskiplist *zsl, zrangespec *range) {
     zskiplistNode *x;
 
     /* Test for ranges that will always be empty. */
+    // 如果范围大小为 0
     if (range->min > range->max ||
             (range->min == range->max && (range->minex || range->maxex)))
         return 0;
     x = zsl->tail;
+    // 跳跃表中最大值不大于范围 range 的最小值
     if (x == NULL || !zslValueGteMin(x->score,range))
         return 0;
+    // 跳跃表中最小值不小于范围 range 的最大值
     x = zsl->header->level[0].forward;
     if (x == NULL || !zslValueLteMax(x->score,range))
         return 0;
@@ -465,7 +477,7 @@ zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range) {
  * Min and max are inclusive, so a score >= min || score <= max is deleted.
  * Note that this function takes the reference to the hash table view of the
  * sorted set, in order to remove the elements from the hash table too. */
-/* 删除分数介于[min,max] 之间的所有节点。
+/* 删除 score 介于 range 闭区间的所有节点。
  *
  * 注意：
  * 节点不仅会从跳跃表中删除，而且会从相应的字典中删除。
@@ -505,8 +517,9 @@ unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dic
     return removed;
 }
 
-// 删除分数介于 range 之间的所有节点，删除的节点也会从 dict 中删除
+// 删除 ele 介于 range 闭区间的所有节点，删除的节点也会从字典中删除
 // 返回被删除的节点数量
+// 前提条件：该 skiplist 所有元素分值相同   
 unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *dict) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned long removed = 0;
@@ -541,8 +554,8 @@ unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *di
 
 /* Delete all the elements with rank between start and end from the skiplist.
  * Start and end are inclusive. Note that start and end need to be 1-based */
-/* 从跳跃表中删除所有给定排位内的节点。
- * start 和 end 两个位置都是包含在内的。注意它们都是以 1 为起始值。
+/* 从跳跃表中删除满足 rank 介于 [start,end] 的节点。
+ * start 和 end 都是以 1 为起始值。
  *
  * 函数的返回值为被删除节点的数量。
  *
