@@ -50,14 +50,18 @@
 typedef struct dictEntry {
     // 键
     void *key;
-    // 值
+    // 值可以是：
     union {
+        // 指针
         void *val;
+        // uint64
         uint64_t u64;
+        // int64
         int64_t s64;
+        // 浮点数
         double d;
     } v;
-    // 指向下个哈希表节点，形成链表
+    // 指向下个哈希表节点，形成链表，用来解决哈希冲突（链地址法）
     struct dictEntry *next;
 } dictEntry;
 
@@ -88,7 +92,6 @@ typedef struct dictht {
     unsigned long sizemask;
     // 该哈希表已有节点的数量
     unsigned long used;
-
 } dictht;
 
 // 字典结构体
