@@ -104,8 +104,10 @@ static void _intsetSet(intset *is, int pos, int64_t value) {
 }
 
 /* Create an empty intset. */
+// 新键一个空 intset
 intset *intsetNew(void) {
     intset *is = zmalloc(sizeof(intset));
+    // 创建一个保存两字节大小的 intset 集合
     is->encoding = intrev32ifbe(INTSET_ENC_INT16);
     is->length = 0;
     return is;
@@ -145,13 +147,15 @@ static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos) {
     int64_t cur = -1;
 
     /* The value can never be found when the set is empty */
-    // 当 is 为空时
+    // 当 is 为空时，将 pos 设置为0
     if (intrev32ifbe(is->length) == 0) {
         if (pos) *pos = 0;
         return 0;
     } else {
         /* Check for the case where we know we cannot find the value,
          * but do know the insert position. */
+        // 这里说明元素肯定不在集合当中
+        // 如果该值比最后一个元素还要大，则将 pos 设置为 length
         if (value > _intsetGet(is,max)) {
             if (pos) *pos = intrev32ifbe(is->length);
             return 0;
@@ -161,8 +165,11 @@ static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos) {
         }
     }
 
+    // 元素可能会在集合中，采用二分法查找元素
     while(max >= min) {
+        // 标准二分法
         mid = ((unsigned int)min + (unsigned int)max) >> 1;
+        // 获取指定位置上的元素
         cur = _intsetGet(is,mid);
         if (value > cur) {
             min = mid+1;
@@ -281,6 +288,7 @@ static void intsetMoveTail(intset *is, uint32_t from, uint32_t to) {
  * T = O(N)
  */
 intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
+    // 返回该值实际的编码
     uint8_t valenc = _intsetValueEncoding(value);
     uint32_t pos;
     if (success) *success = 1;
@@ -288,6 +296,7 @@ intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
     /* Upgrade encoding if necessary. If we need to upgrade, we know that
      * this value should be either appended (if > 0) or prepended (if < 0),
      * because it lies outside the range of existing values. */
+    // 将 intset 升级为更大的编码并插入给定的整数。
     if (valenc > intrev32ifbe(is->encoding)) {
         /* This always succeeds, so we don't need to curry *success. */
         return intsetUpgradeAndAdd(is,value);
@@ -295,15 +304,19 @@ intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
         /* Abort if the value is already present in the set.
          * This call will populate "pos" with the right position to insert
          * the value when it cannot be found. */
+        // 判断该值是否已经存在该集合之中，并计算该元素应该放置的位置
         if (intsetSearch(is,value,&pos)) {
             if (success) *success = 0;
             return is;
         }
 
+        //  给数组扩容，每次扩容 1 个单位
         is = intsetResize(is,intrev32ifbe(is->length)+1);
+        // 如果 pos < length 则将 pos 后面的元素后移一位
         if (pos < intrev32ifbe(is->length)) intsetMoveTail(is,pos,pos+1);
     }
 
+    // 在指定位置插入元素
     _intsetSet(is,pos,value);
     is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
     return is;

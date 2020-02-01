@@ -4,9 +4,9 @@
 
 #### 数据结构
 
-[sds.h](./src/sds.h)：简单动态字符串
+[sds.c](./src/sds.c)：简单动态字符串
 
-[adlist.h](./src/adlist.h)：双向无环链表
+[adlist.c](./src/adlist.c)：双向无环链表
 
 [ziplist.c](./src/ziplist.c)：压缩列表
 
@@ -14,6 +14,8 @@
 
 [server.h](./src/server.h)：跳跃表
 
-[dict.h](./src/dict.h)：字典
+[dict.c](./src/dict.c)：字典
 
-[intset.h](./src/intset.h)：整数集合
+[zipmap.c](./src/zipmap.c)：压缩哈希表
+
+[intset.c](./src/intset.c)：整数集合
