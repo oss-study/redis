@@ -38,11 +38,13 @@
 
 /* ===================== Creation and parsing of objects ==================== */
 
+// 创建对象
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
     o->encoding = OBJ_ENCODING_RAW;
     o->ptr = ptr;
+    // 引用计数值设为 1
     o->refcount = 1;
 
     /* Set the LRU to the current lruclock (minutes resolution), or
@@ -346,10 +348,13 @@ void freeStreamObject(robj *o) {
     freeStream(o->ptr);
 }
 
+// 增加引用计数
 void incrRefCount(robj *o) {
     if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount++;
 }
 
+// 减少引用计数
+// 当引用计数值为 0 时，释放内存
 void decrRefCount(robj *o) {
     if (o->refcount == 1) {
         switch(o->type) {

@@ -574,7 +574,9 @@ typedef struct RedisModuleDigest {
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
+// 简单动态字符串
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
+// long 类型整数，不可修改
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
 #define OBJ_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
@@ -582,6 +584,7 @@ typedef struct RedisModuleDigest {
 #define OBJ_ENCODING_ZIPLIST 5 /* Encoded as ziplist */
 #define OBJ_ENCODING_INTSET 6  /* Encoded as intset */
 #define OBJ_ENCODING_SKIPLIST 7  /* Encoded as skiplist */
+// embstr 编码的简单动态字符串，不可修改
 #define OBJ_ENCODING_EMBSTR 8  /* Embedded sds string encoding */
 #define OBJ_ENCODING_QUICKLIST 9 /* Encoded as linked list of ziplists */
 #define OBJ_ENCODING_STREAM 10 /* Encoded as a radix tree of listpacks */
@@ -593,7 +596,7 @@ typedef struct RedisModuleDigest {
 #define OBJ_SHARED_REFCOUNT INT_MAX
 // redis 对象
 typedef struct redisObject {
-    // 对象的类型，字符串/列表/集合 等
+    // 对象的类型：字符串/列表/集合等
     unsigned type:4;
     // 编码
     unsigned encoding:4;

@@ -1835,6 +1835,7 @@ void checkChildrenDone(void) {
  * a macro is used: run_with_period(milliseconds) { .... }
  */
 
+// redis 定时执行程序
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     UNUSED(eventLoop);
