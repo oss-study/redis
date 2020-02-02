@@ -39,6 +39,8 @@
  * between [], otherwise it is written between ().
  *
  * This is the vanilla representation:
+ * 
+ * 通常来讲, 一个基数树的结构如下所示：
  *
  *              (f) ""
  *                \
@@ -60,6 +62,10 @@
  * and only the link to the node representing the last character node is
  * provided inside the representation. So the above representation is turend
  * into:
+ * 
+ * 然而，当前的代码实现使用了一种非常常见的优化策略，
+ * 把只有单个字符的连续几个节点压缩成一个节点，这个节点有一个字符串，不再是只存储单个字符，
+ * 因此上述结构可以优化成如下结构：
  *
  *                  ["foo"] ""
  *                     |
@@ -75,6 +81,8 @@
  * composed of nodes having a single child one after the other. This is the
  * above tree and the resulting node splitting after this event happens:
  *
+ * 然而这种优化使得具体实现更加复杂，例如在上面的 radix tree 中添加一个键"first"，
+ * 则必须对节点进行分割操作，，因为"foo"不再是一个单一的节点组成：
  *
  *                    (f) ""
  *                    /
@@ -96,17 +104,27 @@
 
 #define RAX_NODE_MAX_SIZE ((1<<29)-1)
 typedef struct raxNode {
+    // 表示这个节点是否包含 key
     uint32_t iskey:1;     /* Does this node contain a key? */
+    // 是否存储 value 值，如果存储元数据就只有 key，没有value
     uint32_t isnull:1;    /* Associated value is NULL (don't store it). */
+    // 节点是否压缩
     uint32_t iscompr:1;   /* Node is compressed. */
+    // 该节点存储的字符个数
     uint32_t size:29;     /* Number of children, or compressed string len. */
     /* Data layout is as follows:
      *
+     * 数据布局如下：
+     * 
      * If node is not compressed we have 'size' bytes, one for each children
      * character, and 'size' raxNode pointers, point to each child node.
      * Note how the character is not stored in the children but in the
      * edge of the parents:
+     * 
+     * iscompr=0；非压缩模式下，节点中会保存size个指向子节点的指针；
+     * size 个字符之间互相没有路径联系，数据存储布局是：
      *
+     * 
      * [header iscompr=0][abc][a-ptr][b-ptr][c-ptr](value-ptr?)
      *
      * if node is compressed (iscompr bit is 1) the node has 1 children.
@@ -115,6 +133,9 @@ typedef struct raxNode {
      * nodes linked one after the other, for which only the last one in
      * the sequence is actually represented as a node, and pointed to by
      * the current compressed node.
+     * 
+     * scompr=1；压缩模式下，只会有一个子节点，只会保存一个指向子节点的指针；
+     * size 个字符是压缩字符片段，数据存储布局是：
      *
      * [header iscompr=1][xyz][z-ptr](value-ptr?)
      *
@@ -127,12 +148,17 @@ typedef struct raxNode {
      * children, an additional value pointer is present (as you can see
      * in the representation above as "value-ptr" field).
      */
+    // 存储子节点的信息
     unsigned char data[];
 } raxNode;
 
+// 树结构
 typedef struct rax {
+    // 头部节点指针，树根
     raxNode *head;
+    // 元素数量
     uint64_t numele;
+    // 节点数量
     uint64_t numnodes;
 } rax;
 
@@ -141,11 +167,13 @@ typedef struct rax {
  * field for space concerns, so we use the auxiliary stack when needed. */
 #define RAX_STACK_STATIC_ITEMS 32
 typedef struct raxStack {
+    // 指向栈底的指针
     void **stack; /* Points to static_items or an heap allocated array. */
     size_t items, maxitems; /* Number of items contained and total space. */
     /* Up to RAXSTACK_STACK_ITEMS items we avoid to allocate on the heap
      * and use this static array of pointers instead. */
     void *static_items[RAX_STACK_STATIC_ITEMS];
+    // 如果 push 失败或发生 OOM 错误，该值为 True(1)
     int oom; /* True if pushing into this stack failed for OOM at some point. */
 } raxStack;
 

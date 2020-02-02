@@ -89,6 +89,7 @@ void raxSetDebugMsg(int onoff) {
  * ------------------------------------------------------------------------- */
 
 /* Initialize the stack. */
+// 初始化 raxStack
 static inline void raxStackInit(raxStack *ts) {
     ts->stack = ts->static_items;
     ts->items = 0;
@@ -97,6 +98,7 @@ static inline void raxStackInit(raxStack *ts) {
 }
 
 /* Push an item into the stack, returns 1 on success, 0 on out of memory. */
+// 将指针 ptr 插入栈 ts 中，如果空 间不足，则尝试申请新的空间
 static inline int raxStackPush(raxStack *ts, void *ptr) {
     if (ts->items == ts->maxitems) {
         if (ts->stack == ts->static_items) {
@@ -126,6 +128,7 @@ static inline int raxStackPush(raxStack *ts, void *ptr) {
 
 /* Pop an item from the stack, the function returns NULL if there are no
  * items to pop. */
+// 从栈顶弹出一个元素
 static inline void *raxStackPop(raxStack *ts) {
     if (ts->items == 0) return NULL;
     ts->items--;
@@ -134,12 +137,14 @@ static inline void *raxStackPop(raxStack *ts) {
 
 /* Return the stack item at the top of the stack without actually consuming
  * it. */
+// 获得栈顶元素，但不将其弹出
 static inline void *raxStackPeek(raxStack *ts) {
     if (ts->items == 0) return NULL;
     return ts->stack[ts->items-1];
 }
 
 /* Free the stack in case we used heap allocation. */
+// stack 可能是从堆内存申请的，需要有一个函数判断是否应该将其释放，如果是 则释放:
 static inline void raxStackFree(raxStack *ts) {
     if (ts->stack != ts->static_items) rax_free(ts->stack);
 }
@@ -156,6 +161,7 @@ static inline void raxStackFree(raxStack *ts) {
 
 /* Return the pointer to the last child pointer in a node. For the compressed
  * nodes this is the only child pointer. */
+// 返回节点的最后一个子节点，如果节点是压缩的， 就返回唯一的节点
 #define raxNodeLastChildPtr(n) ((raxNode**) ( \
     ((char*)(n)) + \
     raxNodeCurrentLength(n) - \
@@ -164,6 +170,7 @@ static inline void raxStackFree(raxStack *ts) {
 ))
 
 /* Return the pointer to the first child pointer. */
+// 返回一个节点的第一个子节点
 #define raxNodeFirstChildPtr(n) ((raxNode**) ( \
     (n)->data + \
     (n)->size + \
@@ -172,6 +179,7 @@ static inline void raxStackFree(raxStack *ts) {
 /* Return the current total size of the node. Note that the second line
  * computes the padding after the string of characters, needed in order to
  * save pointers to aligned addresses. */
+// 计算节点占用的空间
 #define raxNodeCurrentLength(n) ( \
     sizeof(raxNode)+(n)->size+ \
     raxPadding((n)->size)+ \
@@ -183,6 +191,7 @@ static inline void raxStackFree(raxStack *ts) {
  * If datafiled is true, the allocation is made large enough to hold the
  * associated data pointer.
  * Returns the new node pointer. On out of memory NULL is returned. */
+// 新建一个没有压缩的节点，如果 datafield 为 true，则 data[] 将多申请一个指针的空间容纳指向卫星数据的指针。
 raxNode *raxNewNode(size_t children, int datafield) {
     size_t nodesize = sizeof(raxNode)+children+raxPadding(children)+
                       sizeof(raxNode*)*children;
@@ -198,6 +207,7 @@ raxNode *raxNewNode(size_t children, int datafield) {
 
 /* Allocate a new rax and return its pointer. On out of memory the function
  * returns NULL. */
+// 新建一个 rax
 rax *raxNew(void) {
     rax *rax = rax_malloc(sizeof(*rax));
     if (rax == NULL) return NULL;
@@ -214,6 +224,7 @@ rax *raxNew(void) {
 
 /* realloc the node to make room for auxiliary data in order
  * to store an item in that node. On out of memory NULL is returned. */
+// 扩充节点空间，以容纳一个指针
 raxNode *raxReallocForData(raxNode *n, void *data) {
     if (data == NULL) return n; /* No reallocation needed, setting isnull=1 */
     size_t curlen = raxNodeCurrentLength(n);
@@ -221,6 +232,7 @@ raxNode *raxReallocForData(raxNode *n, void *data) {
 }
 
 /* Set the node auxiliary data to the specified pointer. */
+// 将数据指针存放到节点上
 void raxSetData(raxNode *n, void *data) {
     n->iskey = 1;
     if (data != NULL) {
@@ -234,6 +246,7 @@ void raxSetData(raxNode *n, void *data) {
 }
 
 /* Get the node auxiliary data. */
+// 从节点获得数据指针
 void *raxGetData(raxNode *n) {
     if (n->isnull) return NULL;
     void **ndata =(void**)((char*)n+raxNodeCurrentLength(n)-sizeof(void*));
@@ -251,6 +264,10 @@ void *raxGetData(raxNode *n) {
  * On success the new parent node pointer is returned (it may change because
  * of the realloc, so the caller should discard 'n' and use the new value).
  * On out of memory NULL is returned, and the old node is still valid. */
+// 向一个节点 n 插入一个表示字符 c 的子节点，并返回 n 的新地址；
+// parentlink 为指向父节点 n 中指向新子节点的指针， childptr 存储新子节点的地址；
+// 新的父节点的空间将是旧空间加上一个容纳字符的字节以及一个容纳指针的空间；
+// 注意压缩节点是不能插入子节点的，必须分裂才能插入。
 raxNode *raxAddChild(raxNode *n, unsigned char c, raxNode **childptr, raxNode ***parentlink) {
     assert(n->iscompr == 0);
 
@@ -392,6 +409,7 @@ raxNode *raxAddChild(raxNode *n, unsigned char c, raxNode **childptr, raxNode **
  * The function also returns a child node, since the last node of the
  * compressed chain cannot be part of the chain: it has zero children while
  * we can only compress inner nodes with exactly one child each. */
+// 压缩一个节点， n 必须没有子节点，新节点的空间需要容纳所有字符，以及一个子节点的指针。
 raxNode *raxCompressNode(raxNode *n, unsigned char *s, size_t len, raxNode **child) {
     assert(n->size == 0 && n->iscompr == 0);
     void *data = NULL; /* Initialized only to avoid warnings. */
@@ -454,6 +472,9 @@ raxNode *raxCompressNode(raxNode *n, unsigned char *s, size_t len, raxNode **chi
  * means that the current node represents the key (that is, none of the
  * compressed node characters are needed to represent the key, just all
  * its parents nodes). */
+// 在 rax 中查找字符串 s 的位置，返回值是匹配过的字符数，stopnode 是查找结束的位置， plink 是父节点；
+// 如果最后在压缩节点中停止， 则 splitpos 记录节点中需要分裂的位置；
+// ts 是一个栈，保存从根节点到停止节点经过的所有节点。
 static inline size_t raxLowWalk(rax *rax, unsigned char *s, size_t len, raxNode **stopnode, raxNode ***plink, int *splitpos, raxStack *ts) {
     raxNode *h = rax->head;
     raxNode **parentlink = &rax->head;
@@ -504,6 +525,7 @@ static inline size_t raxLowWalk(rax *rax, unsigned char *s, size_t len, raxNode 
  * function returns 0 as well but sets errno to ENOMEM, otherwise errno will
  * be set to 0.
  */
+// 插入一个元素，包括节点分裂的过程，比较复杂
 int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old, int overwrite) {
     size_t i;
     int j = 0; /* Split position. If raxLowWalk() stops in a compressed
@@ -513,6 +535,7 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
     raxNode *h, **parentlink;
 
     debugf("### Insert %.*s with value %p\n", (int)len, s, data);
+    // 首先调用 raxLowWalk() 确定插入位置
     i = raxLowWalk(rax,s,len,&h,&parentlink,&j,NULL);
 
     /* If i == len we walked following the whole string. If we are not
@@ -520,6 +543,8 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
      * inserted or this middle node is currently not a key, but can represent
      * our key. We have just to reallocate the node and make space for the
      * data pointer. */
+    // 如果已经匹配的字符串长度等于要插入的字符 串 s 的长度，并且停止节点不是压缩节点；
+    // 那么要么字符串已经在基数树中， 要么基数树里的节点足以表示这个字符串，只要调整节点修改相关字段即可。
     if (i == len && (!h->iscompr || j == 0 /* not in the middle if j is 0 */)) {
         debugf("### Insert: node representing key exists\n");
         /* Make space for the value pointer if needed. */
@@ -547,6 +572,8 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
         return 1; /* Element inserted. */
     }
 
+    // 如果 raxLowWalk() 在压缩节点停止，就要分裂这个节点以继续插入过程。
+    // 节点分裂有 5 种情况
     /* If the node we stopped at is a compressed node, we need to
      * split it before to continue.
      *
@@ -599,12 +626,16 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
      *
      * The final algorithm for insertion covering all the above cases is as
      * follows.
+     * 
+     * 需要两种算法完成分裂操作：
      *
      * ============================= ALGO 1 =============================
      *
      * For the above cases 1 to 4, that is, all cases where we stopped in
      * the middle of a compressed node for a character mismatch, do:
      *
+     * 当是 1~4 种情况时：
+     * 
      * Let $SPLITPOS be the zero-based index at which, in the
      * compressed node array of characters, we found the mismatching
      * character. For example if the node contains "ANNIBALE" and we add
@@ -645,6 +676,8 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
      *
      * ============================= ALGO 2 =============================
      *
+     * 第 5 种情况时，如果在压缩节点停下但并不是不匹配：
+     * 
      * For case 5, that is, if we stopped in the middle of a compressed
      * node but no mismatch was found, do:
      *
@@ -899,6 +932,7 @@ oom:
 
 /* Overwriting insert. Just a wrapper for raxGenericInsert() that will
  * update the element if there is already one for the same key. */
+// 插入一个新的元素，s 指向 key，data 指向 value，如果 key 已存在，则更新 value
 int raxInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old) {
     return raxGenericInsert(rax,s,len,data,old,1);
 }
@@ -906,6 +940,7 @@ int raxInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old) {
 /* Non overwriting insert function: this if an element with the same key
  * exists, the value is not updated and the function returns 0.
  * This is a just a wrapper for raxGenericInsert(). */
+// 插入一个新的元素，s 指向 key，data 指向 value，如果 key 已存在，则直接返回
 int raxTryInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old) {
     return raxGenericInsert(rax,s,len,data,old,0);
 }
@@ -913,6 +948,7 @@ int raxTryInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old)
 /* Find a key in the rax, returns raxNotFound special void pointer value
  * if the item was not found, otherwise the value associated with the
  * item is returned. */
+// 查找 key
 void *raxFind(rax *rax, unsigned char *s, size_t len) {
     raxNode *h;
 
@@ -929,6 +965,7 @@ void *raxFind(rax *rax, unsigned char *s, size_t len) {
  * one if needed. The function assumes it will find a match, otherwise the
  * operation is an undefined behavior (it will continue scanning the
  * memory without any bound checking). */
+// 返回父节点中指向子节点的指针的地址
 raxNode **raxFindParentLink(raxNode *parent, raxNode *child) {
     raxNode **cp = raxNodeFirstChildPtr(parent);
     raxNode *c;
@@ -944,6 +981,8 @@ raxNode **raxFindParentLink(raxNode *parent, raxNode *child) {
  * removal) is returned. Note that this function does not fix the pointer
  * of the parent node in its parent, so this task is up to the caller.
  * The function never fails for out of memory. */
+// 从一个节点中删除一个子节点。如果父节点是压缩节点，只需将父节点修改为没有子节点的普通空节点即可；
+// 否则就要查找要删除的子节点的位置，再将其删除。
 raxNode *raxRemoveChild(raxNode *parent, raxNode *child) {
     debugnode("raxRemoveChild before", parent);
     /* If parent is a compressed node (having a single child, as for definition
@@ -1017,6 +1056,7 @@ raxNode *raxRemoveChild(raxNode *parent, raxNode *child) {
 
 /* Remove the specified item. Returns 1 if the item was found and
  * deleted, 0 otherwise. */
+// 移除元素
 int raxRemove(rax *rax, unsigned char *s, size_t len, void **old) {
     raxNode *h;
     raxStack ts;
@@ -1237,6 +1277,7 @@ void raxRecursiveFree(rax *rax, raxNode *n, void (*free_callback)(void*)) {
 
 /* Free a whole radix tree, calling the specified callback in order to
  * free the auxiliary data. */
+// 带有回调的free 方法
 void raxFreeWithCallback(rax *rax, void (*free_callback)(void*)) {
     raxRecursiveFree(rax,rax->head,free_callback);
     assert(rax->numnodes == 0);
@@ -1244,6 +1285,7 @@ void raxFreeWithCallback(rax *rax, void (*free_callback)(void*)) {
 }
 
 /* Free a whole radix tree. */
+// 释放 rax
 void raxFree(rax *rax) {
     raxFreeWithCallback(rax,NULL);
 }
