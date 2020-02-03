@@ -235,6 +235,7 @@ robj *dupStringObject(const robj *o) {
     }
 }
 
+// LIST
 robj *createQuicklistObject(void) {
     quicklist *l = quicklistCreate();
     robj *o = createObject(OBJ_LIST,l);
@@ -242,6 +243,7 @@ robj *createQuicklistObject(void) {
     return o;
 }
 
+// LIST
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_LIST,zl);
@@ -249,6 +251,7 @@ robj *createZiplistObject(void) {
     return o;
 }
 
+// SET
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
@@ -256,6 +259,7 @@ robj *createSetObject(void) {
     return o;
 }
 
+// SET
 robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
@@ -263,6 +267,7 @@ robj *createIntsetObject(void) {
     return o;
 }
 
+// HASH
 robj *createHashObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_HASH, zl);
@@ -270,6 +275,7 @@ robj *createHashObject(void) {
     return o;
 }
 
+// ZSET
 robj *createZsetObject(void) {
     zset *zs = zmalloc(sizeof(*zs));
     robj *o;
@@ -281,6 +287,7 @@ robj *createZsetObject(void) {
     return o;
 }
 
+// ZSET
 robj *createZsetZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_ZSET,zl);
@@ -288,6 +295,7 @@ robj *createZsetZiplistObject(void) {
     return o;
 }
 
+// STREAM
 robj *createStreamObject(void) {
     stream *s = streamNew();
     robj *o = createObject(OBJ_STREAM,s);
@@ -295,6 +303,7 @@ robj *createStreamObject(void) {
     return o;
 }
 
+// MODULE
 robj *createModuleObject(moduleType *mt, void *value) {
     moduleValue *mv = zmalloc(sizeof(*mv));
     mv->type = mt;
@@ -399,6 +408,7 @@ void decrRefCount(robj *o) {
 /* This variant of decrRefCount() gets its argument as void, and is useful
  * as free method in data structures that expect a 'void free_object(void*)'
  * prototype for the free method. */
+// 用作特定数据结构的释放函数包装
 void decrRefCountVoid(void *o) {
     decrRefCount(o);
 }
@@ -407,10 +417,16 @@ void decrRefCountVoid(void *o) {
  * It is useful in order to pass a new object to functions incrementing
  * the ref count of the received object. Example:
  *
+ * 这个函数将对象的引用计数设为 0 ，但并不释放对象。
+ * 这个函数在将一个对象传入一个会增加引用计数的函数中时，非常有用。
+ * 就像这样：
+ * 
  *    functionThatWillIncrementRefCount(resetRefCount(CreateObject(...)));
  *
  * Otherwise you need to resort to the less elegant pattern:
  *
+ * 没有这个函数的话，事情就会比较麻烦了：
+ * 
  *    *obj = createObject(...);
  *    functionThatWillIncrementRefCount(obj);
  *    decrRefCount(obj);
@@ -420,6 +436,13 @@ robj *resetRefCount(robj *obj) {
     return obj;
 }
 
+/*
+ * 检查对象 o 的类型是否和 type 相同：
+ *
+ *  - 相同返回 0 
+ *
+ *  - 不相同返回 1 ，并向客户端回复一个错误
+ */
 int checkType(client *c, robj *o, int type) {
     if (o->type != type) {
         addReply(c,shared.wrongtypeerr);
@@ -428,10 +451,18 @@ int checkType(client *c, robj *o, int type) {
     return 0;
 }
 
+// 判断 SDS 字符串是否是一个取值在 long long 数值范围内的数值的字符串表达；
 int isSdsRepresentableAsLongLong(sds s, long long *llval) {
     return string2ll(s,sdslen(s),llval) ? C_OK : C_ERR;
 }
 
+/*
+ * 检查对象 o 中的值能否表示为 long long 类型：
+ *
+ *  - 可以则返回 REDIS_OK ，并将 long long 值保存到 *llval 中。
+ *
+ *  - 不可以则返回 REDIS_ERR
+ */
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (o->encoding == OBJ_ENCODING_INT) {
@@ -446,6 +477,7 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
  * in case there is more than 10% of free space at the end of the SDS
  * string. This happens because SDS strings tend to overallocate to avoid
  * wasting too much time in allocations when appending to the string. */
+// 对 SDS 进行 trim，即空闲空间大于字符串长度的1/10时,执行resize,清除空闲空间
 void trimStringObjectIfNeeded(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW &&
         sdsavail(o->ptr) > sdslen(o->ptr)/10)
@@ -455,6 +487,7 @@ void trimStringObjectIfNeeded(robj *o) {
 }
 
 /* Try to encode a string object in order to save space */
+// 尝试对字符串对象进行编码，以节约内存。
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
@@ -469,16 +502,20 @@ robj *tryObjectEncoding(robj *o) {
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
      * in represented by an actually array of chars. */
+    // 只在字符串的编码为 RAW 或者 EMBSTR 时尝试进行编码
     if (!sdsEncodedObject(o)) return o;
 
     /* It's not safe to encode shared objects: shared objects can be shared
      * everywhere in the "object space" of Redis and may end in places where
      * they are not handled. We handle them only as values in the keyspace. */
+    // 不对共享对象进行编码
      if (o->refcount > 1) return o;
 
     /* Check if we can represent this string as a long integer.
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */
+    // 对字符串进行检查
+    // 只对长度小于或等于 21 字节，并且可以被解释为整数的字符串进行编码
     len = sdslen(s);
     if (len <= 20 && string2l(s,len,&value)) {
         /* This object is encodable as a long. Try to use a shared object.
@@ -510,6 +547,7 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
+    // 尝试将 RAW 编码的字符串编码为 EMBSTR 编码
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
         robj *emb;
 
@@ -528,6 +566,7 @@ robj *tryObjectEncoding(robj *o) {
      * We do that only for relatively large strings as this branch
      * is only entered if the length of the string is greater than
      * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
+    // 这个对象没办法进行编码，尝试从 SDS 中移除所有空余空间
     trimStringObjectIfNeeded(o);
 
     /* Return the original object. */
@@ -536,6 +575,8 @@ robj *tryObjectEncoding(robj *o) {
 
 /* Get a decoded version of an encoded object (returned as a new object).
  * If the object is already raw-encoded just increment the ref count. */
+// 以新对象的形式，返回一个输入对象的解码版本（RAW 编码）。
+// 如果对象已经是 RAW 编码的，那么对输入对象的引用计数增一，然后返回输入对象。
 robj *getDecodedObject(robj *o) {
     robj *dec;
 
@@ -543,6 +584,7 @@ robj *getDecodedObject(robj *o) {
         incrRefCount(o);
         return o;
     }
+    // 解码对象，将对象的值从整数转换为字符串
     if (o->type == OBJ_STRING && o->encoding == OBJ_ENCODING_INT) {
         char buf[32];
 
@@ -555,12 +597,21 @@ robj *getDecodedObject(robj *o) {
 }
 
 /* Compare two string objects via strcmp() or strcoll() depending on flags.
+ * 
+ * 根据 flags 的值，决定是使用 strcmp() 或者 strcoll() 来对比字符串对象。
+ * 
  * Note that the objects may be integer-encoded. In such a case we
  * use ll2string() to get a string representation of the numbers on the stack
  * and compare the strings, it's much faster than calling getDecodedObject().
  *
+ * 注意，因为字符串对象可能实际上保存的是整数值，
+ * 如果出现这种情况，那么函数先将整数转换为字符串，
+ * 然后再对比两个字符串，
+ * 这种做法比调用 getDecodedObject() 更快
+ * 
+ * 当 flags 为 REDIS_COMPARE_BINARY 时，对比以二进制安全的方式进行。
  * Important note: when REDIS_COMPARE_BINARY is used a binary-safe comparison
- * is used. */l
+ * is used. */
 
 #define REDIS_COMPARE_BINARY (1<<0)
 #define REDIS_COMPARE_COLL (1<<1)
@@ -571,6 +622,7 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
     size_t alen, blen, minlen;
 
     if (a == b) return 0;
+    // 指向字符串值，并在有需要时，将整数转换为字符串 a
     if (sdsEncodedObject(a)) {
         astr = a->ptr;
         alen = sdslen(astr);
@@ -578,6 +630,7 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
         alen = ll2string(bufa,sizeof(bufa),(long) a->ptr);
         astr = bufa;
     }
+    // 同样处理字符串 b
     if (sdsEncodedObject(b)) {
         bstr = b->ptr;
         blen = sdslen(bstr);
@@ -585,6 +638,7 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
         blen = ll2string(bufb,sizeof(bufb),(long) b->ptr);
         bstr = bufb;
     }
+    // 对比
     if (flags & REDIS_COMPARE_COLL) {
         return strcoll(astr,bstr);
     } else {
@@ -611,26 +665,34 @@ int collateStringObjects(robj *a, robj *b) {
  * point of view of a string comparison, otherwise 0 is returned. Note that
  * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
+// 如果两个对象的值在字符串的形式上相等，那么返回 1 ， 否则返回 0 。
+// 这个函数做了相应的优化，所以比 (compareStringObject(a, b) == 0) 更快一些。
 int equalStringObjects(robj *a, robj *b) {
+    // 如果对象的编码为 INT ，直接对比值
     if (a->encoding == OBJ_ENCODING_INT &&
         b->encoding == OBJ_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
          * long is the same. */
         return a->ptr == b->ptr;
+    // 进行字符串对象比对
     } else {
         return compareStringObjects(a,b) == 0;
     }
 }
 
+// 返回字符串对象中字符串值的长度
 size_t stringObjectLen(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (sdsEncodedObject(o)) {
         return sdslen(o->ptr);
+    // INT 编码，计算将这个值转换为字符串要多少字节
+    // 相当于返回它的长度
     } else {
         return sdigits10((long)o->ptr);
     }
 }
 
+// 尝试从对象中取出 double 值
 int getDoubleFromObject(const robj *o, double *target) {
     double value;
 
@@ -638,19 +700,23 @@ int getDoubleFromObject(const robj *o, double *target) {
         value = 0;
     } else {
         serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
+        // 尝试从字符串中转换 double 值
         if (sdsEncodedObject(o)) {
             if (!string2d(o->ptr, sdslen(o->ptr), &value))
                 return C_ERR;
+        // INT 编码
         } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
         }
     }
+    // 返回值，保存在 target 中
     *target = value;
     return C_OK;
 }
 
+// 尝试从对象 o 中取出 double 值：
 int getDoubleFromObjectOrReply(client *c, robj *o, double *target, const char *msg) {
     double value;
     if (getDoubleFromObject(o, &value) != C_OK) {
@@ -665,6 +731,7 @@ int getDoubleFromObjectOrReply(client *c, robj *o, double *target, const char *m
     return C_OK;
 }
 
+// 尝试从对象中取出 long double 值
 int getLongDoubleFromObject(robj *o, long double *target) {
     long double value;
     char *eptr;
@@ -673,6 +740,7 @@ int getLongDoubleFromObject(robj *o, long double *target) {
         value = 0;
     } else {
         serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
+        // RAW 编码，尝试从字符串中转换 long double
         if (sdsEncodedObject(o)) {
             errno = 0;
             value = strtold(o->ptr, &eptr);
@@ -683,6 +751,7 @@ int getLongDoubleFromObject(robj *o, long double *target) {
                     (value == HUGE_VAL || value == -HUGE_VAL || value == 0)) ||
                 isnan(value))
                 return C_ERR;
+        // INT 编码，直接保存
         } else if (o->encoding == OBJ_ENCODING_INT) {
             value = (long)o->ptr;
         } else {
@@ -693,6 +762,7 @@ int getLongDoubleFromObject(robj *o, long double *target) {
     return C_OK;
 }
 
+// 尝试从对象 o 中取出 long double 值：
 int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, const char *msg) {
     long double value;
     if (getLongDoubleFromObject(o, &value) != C_OK) {
@@ -707,6 +777,8 @@ int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, cons
     return C_OK;
 }
 
+// 尝试从对象 o 中取出整数值，或者尝试将对象 o 所保存的值转换为整数值，
+// 如果 o 为 NULL ，那么将 *target 设为 0 。
 int getLongLongFromObject(robj *o, long long *target) {
     long long value;
 
@@ -726,6 +798,7 @@ int getLongLongFromObject(robj *o, long long *target) {
     return C_OK;
 }
 
+// 尝试从对象 o 中取出整数值
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg) {
     long long value;
     if (getLongLongFromObject(o, &value) != C_OK) {
@@ -740,6 +813,7 @@ int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const ch
     return C_OK;
 }
 
+// 尝试从对象 o 中取出 long 类型值，或者尝试将对象 o 中的值转换为 long 类型值
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) {
     long long value;
 
@@ -756,6 +830,7 @@ int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) 
     return C_OK;
 }
 
+// 返回编码的字符串表示
 char *strEncoding(int encoding) {
     switch(encoding) {
     case OBJ_ENCODING_RAW: return "raw";
@@ -1260,6 +1335,7 @@ int objectSetLRUOrLFU(robj *val, long long lfu_freq, long long lru_idle,
 
 /* This is a helper function for the OBJECT command. We need to lookup keys
  * without any modification of LRU or other parameters. */
+// OBJECT 命令的辅助函数，用于在不修改 LRU 时间的情况下，尝试获取 key 对象
 robj *objectCommandLookup(client *c, robj *key) {
     dictEntry *de;
 
@@ -1267,6 +1343,8 @@ robj *objectCommandLookup(client *c, robj *key) {
     return (robj*) dictGetVal(de);
 }
 
+// 在不修改 LRU 时间的情况下，获取 key 对应的对象。
+// 如果对象不存在，那么向客户端发送回复 reply
 robj *objectCommandLookupOrReply(client *c, robj *key, robj *reply) {
     robj *o = objectCommandLookup(c,key);
 
@@ -1276,6 +1354,7 @@ robj *objectCommandLookupOrReply(client *c, robj *key, robj *reply) {
 
 /* Object command allows to inspect the internals of an Redis Object.
  * Usage: OBJECT <refcount|encoding|idletime|freq> <key> */
+// OBJECT 命令
 void objectCommand(client *c) {
     robj *o;
 
@@ -1288,14 +1367,17 @@ void objectCommand(client *c) {
 NULL
         };
         addReplyHelp(c, help);
+    // 返回对象的引用计数
     } else if (!strcasecmp(c->argv[1]->ptr,"refcount") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
         addReplyLongLong(c,o->refcount);
+    // 返回对象的编码
     } else if (!strcasecmp(c->argv[1]->ptr,"encoding") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
         addReplyBulkCString(c,strEncoding(o->encoding));
+    // 返回对象的空闲时间
     } else if (!strcasecmp(c->argv[1]->ptr,"idletime") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
@@ -1325,6 +1407,7 @@ NULL
  * memory introspection capabilities of Redis.
  *
  * Usage: MEMORY usage <key> */
+// MEMORY 命令
 void memoryCommand(client *c) {
     if (!strcasecmp(c->argv[1]->ptr,"help") && c->argc == 2) {
         const char *help[] = {

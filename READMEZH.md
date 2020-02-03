@@ -21,3 +21,11 @@
 [intset.c](./src/intset.c)：整数集合
 
 [rax.c](./src/rax.c)：radix tree
+
+#### 对象
+
+[object.c](./src/object.c)：对象的实现
+
+[t_string.c](./src/t_string.c)：字符串对象
+
+[t_list.c](./src/t_string.c)：列表对象
