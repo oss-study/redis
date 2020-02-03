@@ -983,7 +983,7 @@ struct bitfieldOp {
     int opcode;         /* Operation id. */
     // 子命令 OVERFLOW 类型
     int owtype;         /* Overflow type to use. */
-    // 整数下的位宽
+    // 整数时的位宽
     int bits;           /* Integer bitfield bits width. */
     // 无符号整数还是有符号整数
     int sign;           /* True if signed, otherwise unsigned op. */
@@ -1082,7 +1082,7 @@ void bitfieldCommand(client *c) {
     // readonly 标记为记录子命令中是否存在写命令
     if (readonly) {
         /* Lookup for read is ok if key doesn't exit, but errors
-         * if it's not a string. */
+         * if it'nots  a string. */
         o = lookupKeyRead(c->db,c->argv[1]);
         if (o != NULL && checkType(c,o,OBJ_STRING)) {
             zfree(ops);
