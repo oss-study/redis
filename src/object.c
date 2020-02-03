@@ -38,7 +38,7 @@
 
 /* ===================== Creation and parsing of objects ==================== */
 
-// 创建对象
+// 创建一个新对象
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
@@ -76,6 +76,8 @@ robj *makeObjectShared(robj *o) {
 
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
+// 创建一个 REDIS_ENCODING_RAW 编码的字符对象
+// 对象的指针指向一个 sds 结构
 robj *createRawStringObject(const char *ptr, size_t len) {
     return createObject(OBJ_STRING, sdsnewlen(ptr,len));
 }
@@ -83,6 +85,9 @@ robj *createRawStringObject(const char *ptr, size_t len) {
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
+// 创建一个 REDIS_ENCODING_EMBSTR 编码的字符对象
+// 这个字符串对象中的 sds 会和字符串对象的 redisObject 结构一起分配
+// 因此这个字符也是不可修改的
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
     struct sdshdr8 *sh = (void*)(o+1);
@@ -117,6 +122,8 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  *
  * The current limit of 44 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
+// 如果字符串长度小于 44 字节，创建一个编码方式为 EMBSTR 的对象；
+// 否则创建一个编码方式为 RAW 的对象
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
@@ -132,6 +139,7 @@ robj *createStringObject(const char *ptr, size_t len) {
  * integer, because the object is going to be used as value in the Redis key
  * space (for instance when the INCR command is used), so we want LFU/LRU
  * values specific for each key. */
+// 如果存储的是可以用 long 类型表示的整数值，在 Redis 中会用 int 编码来表示字符串对象。
 robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     robj *o;
 
@@ -143,23 +151,29 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
         valueobj = 0;
     }
 
+    // value 的大小符合 REDIS 共享整数的范围
+    // 那么返回一个共享对象
     if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) {
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
+        // 数值大小范围不在共享整数的范围内，但在 long 大小以内，使用int 编码，
         if (value >= LONG_MIN && value <= LONG_MAX) {
             o = createObject(OBJ_STRING, NULL);
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
+            // 大于 long 大小的数值是用 raw 编码字符串对象。
             o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
     return o;
 }
 
+// 下面两个注释并不确定
 /* Wrapper for createStringObjectFromLongLongWithOptions() always demanding
  * to create a shared object if possible. */
+// 为一个 long long 类型数据创建对象
 robj *createStringObjectFromLongLong(long long value) {
     return createStringObjectFromLongLongWithOptions(value,0);
 }
@@ -168,6 +182,7 @@ robj *createStringObjectFromLongLong(long long value) {
  * object when LFU/LRU info are needed, that is, when the object is used
  * as a value in the key space, and Redis is configured to evict based on
  * LFU/LRU. */
+ // 为一个 long long 类型数据创建对象，该对象作为值键使用，且配置了 LFU/LRU
 robj *createStringObjectFromLongLongForValue(long long value) {
     return createStringObjectFromLongLongWithOptions(value,1);
 }
@@ -178,6 +193,7 @@ robj *createStringObjectFromLongLongForValue(long long value) {
  * and the output of snprintf() is not modified.
  *
  * The 'humanfriendly' option is used for INCRBYFLOAT and HINCRBYFLOAT. */
+// 根据传入的 long double 值，为它创建一个字符串对象
 robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
     char buf[MAX_LONG_DOUBLE_CHARS];
     int len = ld2string(buf,sizeof(buf),value,humanfriendly? LD_STR_HUMAN: LD_STR_AUTO);
@@ -187,10 +203,16 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
 /* Duplicate a string object, with the guarantee that the returned object
  * has the same encoding as the original one.
  *
+ * 复制一个字符串对象，复制得到的对象和输入对象拥有相同编码。
+ * 
  * This function also guarantees that duplicating a small integer object
  * (or a string object that contains a representation of a small integer)
  * will always result in a fresh object that is unshared (refcount == 1).
  *
+ * 这个函数在复制一个包含整数值的字符串对象时，总是产生一个非共享的对象。
+ * 
+ * 输出对象的 refcount 总为 1 
+ * 
  * The resulting object always has refcount set to 1. */
 robj *dupStringObject(const robj *o) {
     robj *d;
@@ -538,7 +560,7 @@ robj *getDecodedObject(robj *o) {
  * and compare the strings, it's much faster than calling getDecodedObject().
  *
  * Important note: when REDIS_COMPARE_BINARY is used a binary-safe comparison
- * is used. */
+ * is used. */l
 
 #define REDIS_COMPARE_BINARY (1<<0)
 #define REDIS_COMPARE_COLL (1<<1)

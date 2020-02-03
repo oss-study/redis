@@ -30,6 +30,8 @@
 
 #include "server.h"
 
+// 该文件描述了 Redis 保存二进制位数组的方法，以及 SETBIT 、 GETBIT 、 BITCOUNT 、 BITOP 四个命令的实现原理。
+
 /* -----------------------------------------------------------------------------
  * Helpers and low level bit functions.
  * -------------------------------------------------------------------------- */
@@ -37,10 +39,15 @@
 /* Count number of bits set in the binary array pointed by 's' and long
  * 'count' bytes. The implementation of this function is required to
  * work with a input string length up to 512 MB. */
+// 计算长度为 count 的二进制数组指针 s 被设置为 1 的位数量
+// 这个函数只能在最大为 512 MB 的字符串上使用
 size_t redisPopcount(void *s, long count) {
     size_t bits = 0;
     unsigned char *p = s;
     uint32_t *p4;
+    // 通过查表来计算，对于 1 字节所能表示的值来说，这些值的二进制表示所带有的 1 的数量
+    // 比如整数 3 的二进制表示 0011 ，带有两个 1
+    // 正好是查表 bitsinbyte[3] == 2
     static const unsigned char bitsinbyte[256] = {0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8};
 
     /* Count initial bytes not aligned to 32 bit. */
@@ -50,6 +57,7 @@ size_t redisPopcount(void *s, long count) {
     }
 
     /* Count bits 28 bytes at a time */
+    // 每次统计 16 字节
     p4 = (uint32_t*)p;
     while(count>=28) {
         uint32_t aux1, aux2, aux3, aux4, aux5, aux6, aux7;
@@ -86,6 +94,7 @@ size_t redisPopcount(void *s, long count) {
                     ((aux7 + (aux7 >> 4)) & 0x0F0F0F0F))* 0x01010101) >> 24;
     }
     /* Count the remaining bytes. */
+    // 统计剩余的字节
     p = (unsigned char*)p4;
     while(count--) bits += bitsinbyte[*p++];
     return bits;
@@ -98,6 +107,7 @@ size_t redisPopcount(void *s, long count) {
  * no zero bit is found, it returns count*8 assuming the string is zero
  * padded on the right. However if 'bit' is 1 it is possible that there is
  * not a single set bit in the bitmap. In this special case -1 is returned. */
+// 计算 bit 位位置
 long redisBitpos(void *s, unsigned long count, int bit) {
     unsigned long *l;
     unsigned char *c;
@@ -116,7 +126,9 @@ long redisBitpos(void *s, unsigned long count, int bit) {
      * aligned. */
 
     /* Skip initial bits not aligned to sizeof(unsigned long) byte by byte. */
+    // 首先判断字节是否按 sizeof(*l)对齐，不对齐则一个一个字节进行比较，直到 sizeof(*l)对齐或者是count为0
     skipval = bit ? 0 : UCHAR_MAX;
+    // 查找结束后，将查找最后的到值以大端形式写入word，并不一定找到
     c = (unsigned char*) s;
     found = 0;
     while((unsigned long)c & (sizeof(*l)-1) && count) {
@@ -163,16 +175,19 @@ long redisBitpos(void *s, unsigned long count, int bit) {
      * return -1 to signal that there is not a single "1" in the whole
      * string. This can't happen when we are looking for "0" as we assume
      * that the right of the string is zero padded. */
+    // bit 为 1 时，没有找到直接返回 -1
     if (bit == 1 && word == 0) return -1;
 
     /* Last word left, scan bit by bit. The first thing we need is to
      * have a single "1" set in the most significant position in an
      * unsigned long. We don't know the size of the long so we use a
      * simple trick. */
+    // 设置 one 最高位为 1，其他位为 0， 用于取出 word 中每一位
     one = ULONG_MAX; /* All bits set to 1.*/
     one >>= 1;       /* All bits set to 1 but the MSB. */
     one = ~one;      /* All bits set to 0 but the MSB. */
 
+    // 依次取出 word 中每一位进行比较，直到找到bit
     while(one) {
         if (((one & word) != 0) == bit) return pos;
         pos++;
@@ -181,6 +196,7 @@ long redisBitpos(void *s, unsigned long count, int bit) {
 
     /* If we reached this point, there is a bug in the algorithm, since
      * the case of no match is handled as a special case before. */
+    // 这里并不会到达，上面已经把所有情况考虑到了
     serverPanic("End of redisBitpos() reached.");
     return 0; /* Just to avoid warnings. */
 }
@@ -522,6 +538,7 @@ unsigned char *getObjectReadOnlyString(robj *o, long *len, char *llbuf) {
 }
 
 /* SETBIT key offset bitvalue */
+// SETBIT 命令,设置指定 offset 处的二进制值
 void setbitCommand(client *c) {
     robj *o;
     char *err = "bit is not an integer or out of range";
@@ -530,37 +547,50 @@ void setbitCommand(client *c) {
     int byteval, bitval;
     long on;
 
+    // 获取 offset 参数
     if (getBitOffsetFromArgument(c,c->argv[2],&bitoffset,0,0) != C_OK)
         return;
 
+    // 获取 value 参数
     if (getLongFromObjectOrReply(c,c->argv[3],&on,err) != C_OK)
         return;
 
     /* Bits can only be set or cleared... */
+    // value 参数的值只能是 0 或者 1 ，否则返回错误
     if (on & ~1) {
         addReplyError(c,err);
         return;
     }
 
+    // 查找字符串对象
     if ((o = lookupStringForBitCommand(c,bitoffset)) == NULL) return;
 
     /* Get current values */
+    // 计算出 offset 所指定的位所在的字节
     byte = bitoffset >> 3;
+    // 将指针定位到要设置的位所在的字节上
     byteval = ((uint8_t*)o->ptr)[byte];
+    // 计算出位所在的位置
     bit = 7 - (bitoffset & 0x7);
+    // 记录位现在的值
     bitval = byteval & (1 << bit);
 
     /* Update byte with new bit value and return original value */
+    // 更新字节中的位，设置它的值为 on 参数的值
     byteval &= ~(1 << bit);
     byteval |= ((on & 0x1) << bit);
     ((uint8_t*)o->ptr)[byte] = byteval;
+    // 发送数据库修改通知
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(NOTIFY_STRING,"setbit",c->argv[1],c->db->id);
+    // 服务器设为脏
     server.dirty++;
+    // 向客户端返回位原来的值
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
 /* GETBIT key offset */
+// GETBIT 命令,获取指定 offset 处的二进制值
 void getbitCommand(client *c) {
     robj *o;
     char llbuf[32];
@@ -576,18 +606,23 @@ void getbitCommand(client *c) {
 
     byte = bitoffset >> 3;
     bit = 7 - (bitoffset & 0x7);
+    // 取出位
     if (sdsEncodedObject(o)) {
+        // 字符串编码，直接取值
         if (byte < sdslen(o->ptr))
             bitval = ((uint8_t*)o->ptr)[byte] & (1 << bit);
     } else {
+        // 整数编码，先转换成字符串，再取值
         if (byte < (size_t)ll2string(llbuf,sizeof(llbuf),(long)o->ptr))
             bitval = llbuf[byte] & (1 << bit);
     }
 
+    // 返回值
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
 /* BITOP op_name target_key src_key1 src_key2 src_key3 ... src_keyN */
+// BITOP 命令，对一个或多个保存二进制位的字符串键进行位元操作，并将结果保存到 destkey 上。
 void bitopCommand(client *c) {
     char *opname = c->argv[1]->ptr;
     robj *o, *targetkey = c->argv[2];
@@ -600,6 +635,7 @@ void bitopCommand(client *c) {
     unsigned char *res = NULL; /* Resulting string. */
 
     /* Parse the operation name. */
+    // 读入 op 参数，确定要执行的操作
     if ((opname[0] == 'a' || opname[0] == 'A') && !strcasecmp(opname,"and"))
         op = BITOP_AND;
     else if((opname[0] == 'o' || opname[0] == 'O') && !strcasecmp(opname,"or"))
@@ -614,19 +650,26 @@ void bitopCommand(client *c) {
     }
 
     /* Sanity check: NOT accepts only a single key argument. */
+    // NOT 操作只能接受单个 key 输入
     if (op == BITOP_NOT && c->argc != 4) {
         addReplyError(c,"BITOP NOT must be called with a single source key.");
         return;
     }
 
     /* Lookup keys, and store pointers to the string objects into an array. */
+    // 查找输入键，并将它们放入一个数组里面
     numkeys = c->argc - 3;
+    // 字符串数组，保存 sds 值
     src = zmalloc(sizeof(unsigned char*) * numkeys);
+    // 长度数组，保存 sds 的长度
     len = zmalloc(sizeof(long) * numkeys);
+    // 对象数组，保存字符串对象
     objects = zmalloc(sizeof(robj*) * numkeys);
     for (j = 0; j < numkeys; j++) {
+        // 查找对象
         o = lookupKeyRead(c->db,c->argv[j+3]);
         /* Handle non-existing keys as empty strings. */
+        // 不存在的键被视为空字符串
         if (o == NULL) {
             objects[j] = NULL;
             src[j] = NULL;
@@ -635,6 +678,7 @@ void bitopCommand(client *c) {
             continue;
         }
         /* Return an error if one of the keys is not a string. */
+        // 键不是字符串类型，返回错误，放弃执行操作
         if (checkType(c,o,OBJ_STRING)) {
             unsigned long i;
             for (i = 0; i < j; i++) {
@@ -646,15 +690,22 @@ void bitopCommand(client *c) {
             zfree(objects);
             return;
         }
+        // 记录对象
         objects[j] = getDecodedObject(o);
+        // 记录 sds
         src[j] = objects[j]->ptr;
+        // 记录 sds 长度
         len[j] = sdslen(objects[j]->ptr);
+        // 记录目前最长 sds 的长度
         if (len[j] > maxlen) maxlen = len[j];
+        // 记录目前最短 sds 的长度
         if (j == 0 || len[j] < minlen) minlen = len[j];
     }
 
     /* Compute the bit operation, if at least one string is not empty. */
+    // 如果有至少一个非空字符串，那么执行计算
     if (maxlen) {
+        // 根据最大长度，创建一个 sds ，该 sds 的所有位都被设置为 0
         res = (unsigned char*) sdsnewlen(NULL,maxlen);
         unsigned char output, byte;
         unsigned long i;
@@ -664,6 +715,7 @@ void bitopCommand(client *c) {
          * vanilla algorithm. On ARM we skip the fast path since it will
          * result in GCC compiling the code using multiple-words load/store
          * operations that are not supported even in ARM >= v6. */
+        // 在键的数量比较少时，进行优化
         j = 0;
         #ifndef USE_ALIGNED_ACCESS
         if (minlen >= sizeof(unsigned long)*4 && numkeys <= 16) {
@@ -675,6 +727,8 @@ void bitopCommand(client *c) {
             memcpy(res,src[0],minlen);
 
             /* Different branches per different operations for speed (sorry). */
+            // 当要处理的位大于等于 32 位时
+            // 每次载入 4*8 = 32 个位，然后对这些位进行计算，利用缓存，进行加速
             if (op == BITOP_AND) {
                 while(minlen >= sizeof(unsigned long)*4) {
                     for (i = 1; i < numkeys; i++) {
@@ -729,10 +783,13 @@ void bitopCommand(client *c) {
         #endif
 
         /* j is set to the next byte to process by the previous loop. */
+        // 以正常方式执行位运算
         for (; j < maxlen; j++) {
             output = (len[0] <= j) ? 0 : src[0][j];
             if (op == BITOP_NOT) output = ~output;
+            // 遍历所有输入键，对所有输入的 scr[i][j] 字节进行运算
             for (i = 1; i < numkeys; i++) {
+                // 如果数组的长度不足，那么相应的字节被假设为 0
                 byte = (len[i] <= j) ? 0 : src[i][j];
                 switch(op) {
                 case BITOP_AND: output &= byte; break;
@@ -740,9 +797,11 @@ void bitopCommand(client *c) {
                 case BITOP_XOR: output ^= byte; break;
                 }
             }
+            // 保存输出
             res[j] = output;
         }
     }
+    // 释放资源
     for (j = 0; j < numkeys; j++) {
         if (objects[j])
             decrRefCount(objects[j]);
@@ -753,11 +812,13 @@ void bitopCommand(client *c) {
 
     /* Store the computed value into the target key */
     if (maxlen) {
+        // 保存结果到指定键
         o = createObject(OBJ_STRING,res);
         setKey(c->db,targetkey,o);
         notifyKeyspaceEvent(NOTIFY_STRING,"set",targetkey,c->db->id);
         decrRefCount(o);
     } else if (dbDelete(c->db,targetkey)) {
+        // 输入为空，没有产生结果，仅仅删除指定键
         signalModifiedKey(c->db,targetkey);
         notifyKeyspaceEvent(NOTIFY_GENERIC,"del",targetkey,c->db->id);
     }
@@ -766,6 +827,7 @@ void bitopCommand(client *c) {
 }
 
 /* BITCOUNT key [start end] */
+// BITCOUNT 命令，统计字符串被设置为 1 的 bit 数
 void bitcountCommand(client *c) {
     robj *o;
     long start, end, strlen;
@@ -778,6 +840,7 @@ void bitcountCommand(client *c) {
     p = getObjectReadOnlyString(o,&strlen,llbuf);
 
     /* Parse start/end range if any. */
+    // 如果给定了 start 和 end 参数，那么读入它们
     if (c->argc == 4) {
         if (getLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK)
             return;
@@ -806,15 +869,18 @@ void bitcountCommand(client *c) {
     /* Precondition: end >= 0 && end < strlen, so the only condition where
      * zero can be returned is: start > end. */
     if (start > end) {
+        // 超出范围的 case ，略过
         addReply(c,shared.czero);
     } else {
         long bytes = end-start+1;
 
+        // 遍历数组，统计值为 1 的位的数量
         addReplyLongLong(c,redisPopcount(p+start,bytes));
     }
 }
 
 /* BITPOS key bit [start [end]] */
+// BITPOS 命令，返回字符串里面第一个被设为 1 或 0 的 bit 位
 void bitposCommand(client *c) {
     robj *o;
     long bit, start, end, strlen;
@@ -824,6 +890,7 @@ void bitposCommand(client *c) {
 
     /* Parse the bit argument to understand what we are looking for, set
      * or clear bits. */
+    // 获取需要查找的 bit 值，0 或 1
     if (getLongFromObjectOrReply(c,c->argv[2],&bit,NULL) != C_OK)
         return;
     if (bit != 0 && bit != 1) {
@@ -834,6 +901,7 @@ void bitposCommand(client *c) {
     /* If the key does not exist, from our point of view it is an infinite
      * array of 0 bits. If the user is looking for the fist clear bit return 0,
      * If the user is looking for the first set bit, return -1. */
+    // 如果 key 不存在，查找 bit 为 0，则返回 0 ，否则返回 -1
     if ((o = lookupKeyRead(c->db,c->argv[1])) == NULL) {
         addReplyLongLong(c, bit ? -1 : 0);
         return;
@@ -842,6 +910,7 @@ void bitposCommand(client *c) {
     p = getObjectReadOnlyString(o,&strlen,llbuf);
 
     /* Parse start/end range if any. */
+    // 解析用户输入的 start 和 end 参数，以字节为单位
     if (c->argc == 4 || c->argc == 5) {
         if (getLongFromObjectOrReply(c,c->argv[3],&start,NULL) != C_OK)
             return;
@@ -874,6 +943,7 @@ void bitposCommand(client *c) {
         addReplyLongLong(c, -1);
     } else {
         long bytes = end-start+1;
+        // 调用 redisBitpos 函数计算 bit 位置
         long pos = redisBitpos(p+start,bytes,bit);
 
         /* If we are looking for clear bits, and the user specified an exact
@@ -887,6 +957,7 @@ void bitposCommand(client *c) {
             addReplyLongLong(c,-1);
             return;
         }
+        // 最后结果要加上先前用户给出的 start 开始长度
         if (pos != -1) pos += start*8; /* Adjust for the bytes we skipped. */
         addReplyLongLong(c,pos);
     }
@@ -902,25 +973,37 @@ void bitposCommand(client *c) {
  * OVERFLOW [WRAP|SAT|FAIL]
  */
 
+// 子命令的结构体
 struct bitfieldOp {
+    // 偏移量
     uint64_t offset;    /* Bitfield offset. */
+    // 子命令 INCRBY 的大小
     int64_t i64;        /* Increment amount (INCRBY) or SET value */
+    // 操作 id
     int opcode;         /* Operation id. */
+    // 子命令 OVERFLOW 类型
     int owtype;         /* Overflow type to use. */
+    // 整数下的位宽
     int bits;           /* Integer bitfield bits width. */
+    // 无符号整数还是有符号整数
     int sign;           /* True if signed, otherwise unsigned op. */
 };
 
+// BITFIELD 命令，将一个 Redis 字符串看作是一个由二进制位组成的数组，并对这个数组中储存的长度不同的整数进行访问
+// 用户可以执行诸如“对偏移量 1234 上的 5 位长有符号整数进行设置”、“获取偏移量 4567 上的 31 位长无符号整数”等操作
 void bitfieldCommand(client *c) {
     robj *o;
     size_t bitoffset;
     int j, numops = 0, changes = 0;
+    // 保存操作的数组
     struct bitfieldOp *ops = NULL; /* Array of ops to execute at end. */
     int owtype = BFOVERFLOW_WRAP; /* Overflow type. */
     int readonly = 1;
     size_t highest_write_offset = 0;
 
+    // 从命令中解析操作，保存到`ops`中  
     for (j = 2; j < c->argc; j++) {
+        // `remargs` 用来判断参数是否足够
         int remargs = c->argc-j-1; /* Remaining args other than current. */
         char *subcmd = c->argv[j]->ptr; /* Current command name. */
         int opcode; /* Current operation code. */
@@ -928,6 +1011,7 @@ void bitfieldCommand(client *c) {
         int sign = 0; /* Signed or unsigned type? */
         int bits = 0; /* Bitfield width in bits. */
 
+        // 判断子命令类型
         if (!strcasecmp(subcmd,"get") && remargs >= 2)
             opcode = BITFIELDOP_GET;
         else if (!strcasecmp(subcmd,"set") && remargs >= 3)
@@ -935,6 +1019,7 @@ void bitfieldCommand(client *c) {
         else if (!strcasecmp(subcmd,"incrby") && remargs >= 3)
             opcode = BITFIELDOP_INCRBY;
         else if (!strcasecmp(subcmd,"overflow") && remargs >= 1) {
+            // 溢出处理
             char *owtypename = c->argv[j+1]->ptr;
             j++;
             if (!strcasecmp(owtypename,"wrap"))
@@ -956,6 +1041,8 @@ void bitfieldCommand(client *c) {
         }
 
         /* Get the type and offset arguments, common to all the ops. */
+        // 获取命令行中的`type`，type 是有取值范围的
+        // 当是有符号整数时，取值范围为 i1 < x < i64；当是无符号整数时，取值范围为 u1 < x < u63
         if (getBitfieldTypeFromArgument(c,c->argv[j+1],&sign,&bits) != C_OK) {
             zfree(ops);
             return;
@@ -966,6 +1053,7 @@ void bitfieldCommand(client *c) {
             return;
         }
 
+        // 除了 Get以外, SET 和 INCRBY 都有第3个参数
         if (opcode != BITFIELDOP_GET) {
             readonly = 0;
             if (highest_write_offset < bitoffset + bits - 1)
@@ -978,6 +1066,7 @@ void bitfieldCommand(client *c) {
         }
 
         /* Populate the array of operations we'll process. */
+        // 构成bitfieldOp结构体，保存入ops中
         ops = zrealloc(ops,sizeof(*ops)*(numops+1));
         ops[numops].offset = bitoffset;
         ops[numops].i64 = i64;
@@ -990,6 +1079,7 @@ void bitfieldCommand(client *c) {
         j += 3 - (opcode == BITFIELDOP_GET);
     }
 
+    // readonly 标记为记录子命令中是否存在写命令
     if (readonly) {
         /* Lookup for read is ok if key doesn't exit, but errors
          * if it's not a string. */
@@ -1012,6 +1102,7 @@ void bitfieldCommand(client *c) {
 
     /* Actually process the operations. */
     for (j = 0; j < numops; j++) {
+        // 执行各个命令 
         struct bitfieldOp *thisop = ops+j;
 
         /* Execute the operation. */
@@ -1026,20 +1117,26 @@ void bitfieldCommand(client *c) {
              * and unsigned operations, since the set of functions to get/set
              * the integers and the used variables types are different. */
             if (thisop->sign) {
+                // 有符号整数
                 int64_t oldval, newval, wrapped, retval;
                 int overflow;
 
+                // 获取旧值
                 oldval = getSignedBitfield(o->ptr,thisop->offset,
                         thisop->bits);
 
                 if (thisop->opcode == BITFIELDOP_INCRBY) {
+                    // 增加值
                     newval = oldval + thisop->i64;
+                     // 检查Overflow
                     overflow = checkSignedBitfieldOverflow(oldval,
                             thisop->i64,thisop->bits,thisop->owtype,&wrapped);
                     if (overflow) newval = wrapped;
                     retval = newval;
                 } else {
+                    // SET
                     newval = thisop->i64;
+                    // 检查Overflow
                     overflow = checkSignedBitfieldOverflow(newval,
                             0,thisop->bits,thisop->owtype,&wrapped);
                     if (overflow) newval = wrapped;
@@ -1056,6 +1153,7 @@ void bitfieldCommand(client *c) {
                     addReplyNull(c);
                 }
             } else {
+                // 无符号整数
                 uint64_t oldval, newval, wrapped, retval;
                 int overflow;
 
@@ -1100,6 +1198,7 @@ void bitfieldCommand(client *c) {
              * copy up to 9 bytes to a local buffer, so that we can easily
              * execute up to 64 bit operations that are at actual string
              * object boundaries. */
+            // 因为取值范围是有限制的，所以使用最多 9 个字节处理
             memset(buf,0,9);
             int i;
             size_t byte = thisop->offset >> 3;
@@ -1123,6 +1222,7 @@ void bitfieldCommand(client *c) {
     }
 
     if (changes) {
+        // 如果值改变了:
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(NOTIFY_STRING,"setbit",c->argv[1],c->db->id);
         server.dirty += changes;

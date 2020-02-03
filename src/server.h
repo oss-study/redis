@@ -576,7 +576,7 @@ typedef struct RedisModuleDigest {
  * is set to one of this fields for this object. */
 // 简单动态字符串
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
-// long 类型整数，不可修改
+// long 类型整数
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
 #define OBJ_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
@@ -584,7 +584,8 @@ typedef struct RedisModuleDigest {
 #define OBJ_ENCODING_ZIPLIST 5 /* Encoded as ziplist */
 #define OBJ_ENCODING_INTSET 6  /* Encoded as intset */
 #define OBJ_ENCODING_SKIPLIST 7  /* Encoded as skiplist */
-// embstr 编码的简单动态字符串，不可修改
+// embstr 编码的简单动态字符串，不可修改，修改需转换成 RAW 编码再进行修改
+// sds 结构体与其对应的 redisObject 对象分配在同一块连续的内存空间
 #define OBJ_ENCODING_EMBSTR 8  /* Embedded sds string encoding */
 #define OBJ_ENCODING_QUICKLIST 9 /* Encoded as linked list of ziplists */
 #define OBJ_ENCODING_STREAM 10 /* Encoded as a radix tree of listpacks */
