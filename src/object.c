@@ -68,6 +68,7 @@ robj *createObject(int type, void *ptr) {
  * robj *myobject = makeObjectShared(createObject(...));
  *
  */
+// 共享对象
 robj *makeObjectShared(robj *o) {
     serverAssert(o->refcount == 1);
     o->refcount = OBJ_SHARED_REFCOUNT;
@@ -170,7 +171,7 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     return o;
 }
 
-// 下面两个注释并不确定
+//TODO: 下面两个注释并不确定
 /* Wrapper for createStringObjectFromLongLongWithOptions() always demanding
  * to create a shared object if possible. */
 // 为一个 long long 类型数据创建对象
@@ -418,7 +419,7 @@ void decrRefCountVoid(void *o) {
  * the ref count of the received object. Example:
  *
  * 这个函数将对象的引用计数设为 0 ，但并不释放对象。
- * 这个函数在将一个对象传入一个会增加引用计数的函数中时，非常有用。
+ * 这个函数在将一个对象传入一个会增加引用计数的函数中时非常有用。
  * 就像这样：
  * 
  *    functionThatWillIncrementRefCount(resetRefCount(CreateObject(...)));
@@ -477,7 +478,7 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
  * in case there is more than 10% of free space at the end of the SDS
  * string. This happens because SDS strings tend to overallocate to avoid
  * wasting too much time in allocations when appending to the string. */
-// 对 SDS 进行 trim，即空闲空间大于字符串长度的1/10时,执行resize,清除空闲空间
+// 对 SDS 进行 trim，即空闲空间大于字符串长度的 1/10 时，执行resize，清除空闲空间
 void trimStringObjectIfNeeded(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW &&
         sdsavail(o->ptr) > sdslen(o->ptr)/10)
@@ -846,6 +847,8 @@ char *strEncoding(int encoding) {
 }
 
 /* =========================== Memory introspection ========================= */
+// 内存自检相关实现
+// 用于 MEMORY 命令
 
 
 /* This is an helper function with the goal of estimating the memory
@@ -862,6 +865,7 @@ char *strEncoding(int encoding) {
  * Actually the number of nodes and keys may be different depending
  * on the insertion speed and thus the ability of the radix tree
  * to compress prefixes. */
+// 计算 Radix Tree 占用字节大小
 size_t streamRadixTreeMemoryUsage(rax *rax) {
     size_t size;
     size = rax->numele * sizeof(streamID);
@@ -875,7 +879,9 @@ size_t streamRadixTreeMemoryUsage(rax *rax) {
  * Note that the returned value is just an approximation, especially in the
  * case of aggregated data types where only "sample_size" elements
  * are checked and averaged to estimate the total size. */
+//对于集合类型结构，默认取样个数为5
 #define OBJ_COMPUTE_SIZE_DEF_SAMPLES 5 /* Default sample size. */
+// 对 value 计算占用字节大小
 size_t objectComputeSize(robj *o, size_t sample_size) {
     sds ele, ele2;
     dict *d;
@@ -1186,6 +1192,7 @@ void inputCatSds(void *result, const char *str) {
 
 /* This implements MEMORY DOCTOR. An human readable analysis of the Redis
  * memory condition. */
+//  MEMORY DOCTOR 命令的实现，返回对开发人员友好的内存分析报告
 sds getMemoryDoctorReport(void) {
     int empty = 0;          /* Instance is empty or almost empty. */
     int big_peak = 0;       /* Memory peak is much larger than used mem. */
@@ -1303,6 +1310,7 @@ sds getMemoryDoctorReport(void) {
  * The lru_idle and lru_clock args are only relevant if policy
  * is MAXMEMORY_FLAG_LRU.
  * Either or both of them may be <0, in that case, nothing is set. */
+// 根据 server.maxmemory_policy 为 object 设置 LRU/LFU 值 
 int objectSetLRUOrLFU(robj *val, long long lfu_freq, long long lru_idle,
                        long long lru_clock, int lru_multiplier) {
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
@@ -1358,6 +1366,7 @@ robj *objectCommandLookupOrReply(client *c, robj *key, robj *reply) {
 void objectCommand(client *c) {
     robj *o;
 
+    // 返回帮助信息
     if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"help")) {
         const char *help[] = {
 "ENCODING <key> -- Return the kind of internal representation used in order to store the value associated with a key.",
@@ -1367,7 +1376,7 @@ void objectCommand(client *c) {
 NULL
         };
         addReplyHelp(c, help);
-    // 返回对象的引用计数
+    // 返回对象的引用计数值
     } else if (!strcasecmp(c->argv[1]->ptr,"refcount") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
@@ -1377,7 +1386,7 @@ NULL
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
         addReplyBulkCString(c,strEncoding(o->encoding));
-    // 返回对象的空闲时间
+    // 返回对象的空转时间
     } else if (!strcasecmp(c->argv[1]->ptr,"idletime") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
@@ -1386,6 +1395,7 @@ NULL
             return;
         }
         addReplyLongLong(c,estimateObjectIdleTime(o)/1000);
+    // 返回对象的访问频率
     } else if (!strcasecmp(c->argv[1]->ptr,"freq") && c->argc == 3) {
         if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.null[c->resp]))
                 == NULL) return;
