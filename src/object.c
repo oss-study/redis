@@ -244,7 +244,7 @@ robj *createQuicklistObject(void) {
     return o;
 }
 
-// LIST
+// LIST，ziplist 编码方式已经不再使用
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_LIST,zl);
