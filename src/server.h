@@ -1471,16 +1471,24 @@ typedef struct _redisSortOperation {
 } redisSortOperation;
 
 /* Structure to hold list iteration abstraction. */
+// 列表对象迭代器，对 quicklistIter 的封装
 typedef struct {
+    // 列表对象
     robj *subject;
+    // 列表对象编码
     unsigned char encoding;
+    // 迭代器方向
     unsigned char direction; /* Iteration direction */
+    // quicklist 迭代器指针
     quicklistIter *iter;
 } listTypeIterator;
 
 /* Structure for an entry while iterating over a list. */
+// 迭代列表时使用的记录结构，用于保存迭代器，以及迭代器返回的列表节点。
 typedef struct {
+    // 列表迭代器
     listTypeIterator *li;
+    // quicklist 节点
     quicklistEntry entry; /* Entry in quicklist */
 } listTypeEntry;
 

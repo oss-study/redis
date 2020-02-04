@@ -43,6 +43,7 @@ int keyIsExpired(redisDb *db, robj *key);
 /* Update LFU when an object is accessed.
  * Firstly, decrement the counter if the decrement time is reached.
  * Then logarithmically increment the counter, and update the access time. */
+// 更新 LFU
 void updateLFU(robj *val) {
     unsigned long counter = LFUDecrAndReturn(val);
     counter = LFULogIncr(counter);
@@ -52,6 +53,7 @@ void updateLFU(robj *val) {
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
+// 从数据库 db 中取出键 key 的值；如果 key 的值存在，那么返回该值，否则返回 NULL。
 robj *lookupKey(redisDb *db, robj *key, int flags) {
     dictEntry *de = dictFind(db->dict,key->ptr);
     if (de) {
@@ -98,6 +100,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
 robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
     robj *val;
 
+    // 删除过期键
     if (expireIfNeeded(db,key) == 1) {
         /* Key expired. If we are in the context of a master, expireIfNeeded()
          * returns 0 only when the key does not exist at all, so it's safe
@@ -130,18 +133,28 @@ robj *lookupKeyReadWithFlags(redisDb *db, robj *key, int flags) {
             return NULL;
         }
     }
+    // 从数据库中取出键的值
     val = lookupKey(db,key,flags);
+    // 更新命中/不命中信息
     if (val == NULL) {
         server.stat_keyspace_misses++;
         notifyKeyspaceEvent(NOTIFY_KEY_MISS, "keymiss", key, db->id);
     }
     else
         server.stat_keyspace_hits++;
+        // 返回值
     return val;
 }
 
 /* Like lookupKeyReadWithFlags(), but does not use any flag, which is the
  * common case. */
+/*
+ * 为执行读取操作而取出键 key 在数据库 db 中的值。
+ *
+ * 并根据是否成功找到值，更新服务器的命中/不命中信息。
+ *
+ * 找到时返回值对象，没找到返回 NULL 。
+ */
 robj *lookupKeyRead(redisDb *db, robj *key) {
     return lookupKeyReadWithFlags(db,key,LOOKUP_NONE);
 }
@@ -152,20 +165,45 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
  * Returns the linked value object if the key exists or NULL if the key
  * does not exist in the specified DB. */
 robj *lookupKeyWriteWithFlags(redisDb *db, robj *key, int flags) {
+    // 删除过期键
     expireIfNeeded(db,key);
+    // 查找并返回 key 的值对象
     return lookupKey(db,key,flags);
 }
 
+/*
+ * 为执行写入操作而取出键 key 在数据库 db 中的值。
+ *
+ * 和 lookupKeyRead 不同，这个函数不会更新服务器的命中/不命中信息。
+ *
+ * 找到时返回值对象，没找到返回 NULL 。
+ */
 robj *lookupKeyWrite(redisDb *db, robj *key) {
     return lookupKeyWriteWithFlags(db, key, LOOKUP_NONE);
 }
 
+/*
+ * 为执行读取操作而从数据库中查找返回 key 的值。
+ *
+ * 如果 key 存在，那么返回 key 的值对象。
+ *
+ * 如果 key 不存在，那么向客户端发送 reply 参数中的信息，并返回 NULL 。
+ */
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply) {
+    // 查找
     robj *o = lookupKeyRead(c->db, key);
+    // 决定是否发送信息
     if (!o) addReply(c,reply);
     return o;
 }
 
+/*
+ * 为执行写入操作而从数据库中查找返回 key 的值。
+ *
+ * 如果 key 存在，那么返回 key 的值对象。
+ *
+ * 如果 key 不存在，那么向客户端发送 reply 参数中的信息，并返回 NULL 。
+ */
 robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
     robj *o = lookupKeyWrite(c->db, key);
     if (!o) addReply(c,reply);
@@ -1211,6 +1249,7 @@ void propagateExpire(redisDb *db, robj *key, int lazy) {
 }
 
 /* Check if the key is expired. */
+// 检查键是否过期
 int keyIsExpired(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
