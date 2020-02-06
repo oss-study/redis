@@ -351,6 +351,7 @@ typedef long long ustime_t; /* microsecond time type. */
 #define REPL_DISKLESS_LOAD_SWAPDB 2
 
 /* Sets operations codes */
+// 集合命令类型
 #define SET_OP_UNION 0
 #define SET_OP_DIFF 1
 #define SET_OP_INTER 2

@@ -1877,6 +1877,7 @@ void zaddGenericCommand(client *c, int flags) {
         }
     }
 
+    // 处理所有元素
     for (j = 0; j < elements; j++) {
         double newscore;
         score = scores[j];
@@ -1914,22 +1915,27 @@ cleanup:
     }
 }
 
+// ZADD 命令，向有序集合中添加元素
 void zaddCommand(client *c) {
     zaddGenericCommand(c,ZADD_NONE);
 }
 
+// ZINCRBY 命令，增加有序集合元素的分值，支持 int 或 double
 void zincrbyCommand(client *c) {
     zaddGenericCommand(c,ZADD_INCR);
 }
 
+// ZREM 命令，删除有序集合中的指定元素
 void zremCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
     int deleted = 0, keyremoved = 0, j;
 
+    // 取出有序集合对象
     if ((zobj = lookupKeyWriteOrReply(c,key,shared.czero)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
+    // 删除元素
     for (j = 2; j < c->argc; j++) {
         if (zsetDel(zobj,c->argv[j]->ptr)) deleted++;
         if (zsetLength(zobj) == 0) {
@@ -1939,6 +1945,7 @@ void zremCommand(client *c) {
         }
     }
 
+    // 如果至少一个元素被删除，那么执行以下代码
     if (deleted) {
         notifyKeyspaceEvent(NOTIFY_ZSET,"zrem",key,c->db->id);
         if (keyremoved)
@@ -1946,10 +1953,12 @@ void zremCommand(client *c) {
         signalModifiedKey(c->db,key);
         server.dirty += deleted;
     }
+    // 回复被删除元素的数量
     addReplyLongLong(c,deleted);
 }
 
 /* Implements ZREMRANGEBYRANK, ZREMRANGEBYSCORE, ZREMRANGEBYLEX commands. */
+// 执行的命令类型
 #define ZRANGE_RANK 0
 #define ZRANGE_SCORE 1
 #define ZRANGE_LEX 2
@@ -1963,6 +1972,7 @@ void zremrangeGenericCommand(client *c, int rangetype) {
     long start, end, llen;
 
     /* Step 1: Parse the range. */
+    // 解析 range
     if (rangetype == ZRANGE_RANK) {
         if ((getLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK) ||
             (getLongFromObjectOrReply(c,c->argv[3],&end,NULL) != C_OK))
@@ -1980,6 +1990,7 @@ void zremrangeGenericCommand(client *c, int rangetype) {
     }
 
     /* Step 2: Lookup & range sanity checks if needed. */
+    // 范围检查
     if ((zobj = lookupKeyWriteOrReply(c,key,shared.czero)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) goto cleanup;
 
@@ -2000,6 +2011,7 @@ void zremrangeGenericCommand(client *c, int rangetype) {
     }
 
     /* Step 3: Perform the range deletion operation. */
+    // 执行范围删除操作
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
         switch(rangetype) {
         case ZRANGE_RANK:
@@ -2053,46 +2065,70 @@ cleanup:
     if (rangetype == ZRANGE_LEX) zslFreeLexRange(&lexrange);
 }
 
+// ZREMRANGEBYRANK 命令，从有序集合中删除指定排名区间的元素，闭区间
 void zremrangebyrankCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_RANK);
 }
 
+// ZREMRANGEBYSCORE 命令，从有序集合中删除指定分值区间的元素，闭区间
 void zremrangebyscoreCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_SCORE);
 }
 
+// ZREMRANGEBYSCORE 命令，从有序集合中删除指定字典序区间的元素，开闭区间由调用者指定
 void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
 }
 
+
+// 多态集合迭代器：可迭代集合或者有序集合
 typedef struct {
+    // 被迭代的对象
     robj *subject;
+    // 对象的类型
     int type; /* Set, sorted set */
+    // 编码
     int encoding;
+    // 权重
     double weight;
 
     union {
         /* Set iterators. */
+        // 集合迭代器
         union _iterset {
+            // intset 迭代器
             struct {
+                // 被迭代的 intset
                 intset *is;
+                // 当前节点索引
                 int ii;
             } is;
+            // 字典迭代器
             struct {
+                // 被迭代的字典
                 dict *dict;
+                // 字典迭代器
                 dictIterator *di;
+                // 当前字典节点
                 dictEntry *de;
             } ht;
         } set;
 
         /* Sorted set iterators. */
+        // 有序集合迭代器
         union _iterzset {
+            // ziplist 迭代器
             struct {
+                // 被迭代的 ziplist
                 unsigned char *zl;
+                // 当前迭代到的成员指针和分值指针
                 unsigned char *eptr, *sptr;
             } zl;
+            // zset 迭代器
             struct {
+                // 被迭代的 zset
                 zset *zs;
+                // 当前跳跃表节点
                 zskiplistNode *node;
             } sl;
         } zset;
@@ -2106,28 +2142,44 @@ typedef struct {
  * we already checked that "ell" holds a long long, or tried to convert another
  * representation into a long long value. When this was successful,
  * OPVAL_VALID_LL is set as well. */
+// DIRTY 常量用于标识在下次迭代之前要进行清理。
+// 当 DIRTY 常量作用于 long long 值时，该值不需要被清理。
+// 因为它表示 ell 已经持有一个 long long 值，或者已经将一个对象转换为 long long 值。
+// 当转换成功时， OPVAL_VALID_LL 被设置。
 #define OPVAL_DIRTY_SDS 1
 #define OPVAL_DIRTY_LL 2
 #define OPVAL_VALID_LL 4
 
 /* Store value retrieved from the iterator. */
+// 用于保存从迭代器里取得的值的结构
 typedef struct {
+    // 标记数据有效性
     int flags;
+    // 私有缓冲区
     unsigned char _buf[32]; /* Private buffer. */
+    // 可以用于保存元素的几个类型
+    // sds 对象
     sds ele;
+    // 字符串
     unsigned char *estr;
+    //字符串长度
     unsigned int elen;
+    //整型数据
     long long ell;
+    // 分值
     double score;
 } zsetopval;
 
 typedef union _iterset iterset;
 typedef union _iterzset iterzset;
 
+// 初始化迭代器
 void zuiInitIterator(zsetopsrc *op) {
+    // 迭代对象为空
     if (op->subject == NULL)
         return;
 
+    // 迭代集合
     if (op->type == OBJ_SET) {
         iterset *it = &op->iter.set;
         if (op->encoding == OBJ_ENCODING_INTSET) {
@@ -2140,6 +2192,7 @@ void zuiInitIterator(zsetopsrc *op) {
         } else {
             serverPanic("Unknown set encoding");
         }
+    // 迭代有序集合
     } else if (op->type == OBJ_ZSET) {
         iterzset *it = &op->iter.zset;
         if (op->encoding == OBJ_ENCODING_ZIPLIST) {
@@ -2160,6 +2213,7 @@ void zuiInitIterator(zsetopsrc *op) {
     }
 }
 
+// 清空迭代器但不释放内存
 void zuiClearIterator(zsetopsrc *op) {
     if (op->subject == NULL)
         return;
@@ -2187,6 +2241,7 @@ void zuiClearIterator(zsetopsrc *op) {
     }
 }
 
+// 返回被迭代集合的元素个数
 unsigned long zuiLength(zsetopsrc *op) {
     if (op->subject == NULL)
         return 0;
@@ -2217,15 +2272,21 @@ unsigned long zuiLength(zsetopsrc *op) {
 /* Check if the current value is valid. If so, store it in the passed structure
  * and move to the next element. If not valid, this means we have reached the
  * end of the structure and can abort. */
+// 检查迭代器当前指向的元素是否合法，如果是的话，将它保存到 zsetopval 中，
+// 然后将迭代器的当前指针指向下一元素，函数返回 1 。
+// 如果当前指向的元素不合法，那么说明对象已经迭代完毕，函数返回 0 。
 int zuiNext(zsetopsrc *op, zsetopval *val) {
     if (op->subject == NULL)
         return 0;
 
+    // 对上次的对象进行清理
     if (val->flags & OPVAL_DIRTY_SDS)
         sdsfree(val->ele);
 
+    // 清零 val 结构
     memset(val,0,sizeof(zsetopval));
 
+    // 迭代集合
     if (op->type == OBJ_SET) {
         iterset *it = &op->iter.set;
         if (op->encoding == OBJ_ENCODING_INTSET) {
@@ -2234,13 +2295,16 @@ int zuiNext(zsetopsrc *op, zsetopval *val) {
             if (!intsetGet(it->is.is,it->is.ii,&ell))
                 return 0;
             val->ell = ell;
+            // 分值默认为 1.0
             val->score = 1.0;
 
             /* Move to next element. */
             it->is.ii++;
         } else if (op->encoding == OBJ_ENCODING_HT) {
+            // 节点为空
             if (it->ht.de == NULL)
                 return 0;
+            // 取出成员
             val->ele = dictGetKey(it->ht.de);
             val->score = 1.0;
 
@@ -2277,6 +2341,7 @@ int zuiNext(zsetopsrc *op, zsetopval *val) {
     return 1;
 }
 
+// 从 zsetopval 中取出 long long 值。
 int zuiLongLongFromValue(zsetopval *val) {
     if (!(val->flags & OPVAL_DIRTY_LL)) {
         val->flags |= OPVAL_DIRTY_LL;
@@ -2295,6 +2360,7 @@ int zuiLongLongFromValue(zsetopval *val) {
     return val->flags & OPVAL_VALID_LL;
 }
 
+// 从 zsetopval 中取出 ele (sds 类型)
 sds zuiSdsFromValue(zsetopval *val) {
     if (val->ele == NULL) {
         if (val->estr != NULL) {
@@ -2309,6 +2375,7 @@ sds zuiSdsFromValue(zsetopval *val) {
 
 /* This is different from zuiSdsFromValue since returns a new SDS string
  * which is up to the caller to free. */
+// 返回一个新的 sds 字符串，由调用者释放
 sds zuiNewSdsFromValue(zsetopval *val) {
     if (val->flags & OPVAL_DIRTY_SDS) {
         /* We have already one to return! */
@@ -2325,6 +2392,7 @@ sds zuiNewSdsFromValue(zsetopval *val) {
     }
 }
 
+// 从 zsetopval 中取出字符串
 int zuiBufferFromValue(zsetopval *val) {
     if (val->estr == NULL) {
         if (val->ele != NULL) {
@@ -2340,11 +2408,13 @@ int zuiBufferFromValue(zsetopval *val) {
 
 /* Find value pointed to by val in the source pointer to by op. When found,
  * return 1 and store its score in target. Return 0 otherwise. */
+// 在迭代器指定的对象中查找给定元素
 int zuiFind(zsetopsrc *op, zsetopval *val, double *score) {
     if (op->subject == NULL)
         return 0;
 
     if (op->type == OBJ_SET) {
+        // 成员为整数，分值为 1.0
         if (op->encoding == OBJ_ENCODING_INTSET) {
             if (zuiLongLongFromValue(val) &&
                 intsetFind(op->subject->ptr,val->ell))
@@ -2354,6 +2424,7 @@ int zuiFind(zsetopsrc *op, zsetopval *val, double *score) {
             } else {
                 return 0;
             }
+        // 成为为对象，分值为 1.0
         } else if (op->encoding == OBJ_ENCODING_HT) {
             dict *ht = op->subject->ptr;
             zuiSdsFromValue(val);
@@ -2367,9 +2438,11 @@ int zuiFind(zsetopsrc *op, zsetopval *val, double *score) {
             serverPanic("Unknown set encoding");
         }
     } else if (op->type == OBJ_ZSET) {
+        // 取出对象
         zuiSdsFromValue(val);
 
         if (op->encoding == OBJ_ENCODING_ZIPLIST) {
+            // 取出成员和分值
             if (zzlFind(op->subject->ptr,val->ele,score) != NULL) {
                 /* Score is already set by zzlFind. */
                 return 1;
@@ -2379,7 +2452,9 @@ int zuiFind(zsetopsrc *op, zsetopval *val, double *score) {
         } else if (op->encoding == OBJ_ENCODING_SKIPLIST) {
             zset *zs = op->subject->ptr;
             dictEntry *de;
+            // 从字典中查找成员对象
             if ((de = dictFind(zs->dict,val->ele)) != NULL) {
+                // 取出分值
                 *score = *(double*)dictGetVal(de);
                 return 1;
             } else {
@@ -2393,6 +2468,7 @@ int zuiFind(zsetopsrc *op, zsetopval *val, double *score) {
     }
 }
 
+// 对比两个被迭代对象的基数
 int zuiCompareByCardinality(const void *s1, const void *s2) {
     unsigned long first = zuiLength((zsetopsrc*)s1);
     unsigned long second = zuiLength((zsetopsrc*)s2);
@@ -2401,12 +2477,17 @@ int zuiCompareByCardinality(const void *s1, const void *s2) {
     return 0;
 }
 
+// 求和计算
 #define REDIS_AGGR_SUM 1
+// 求最小数
 #define REDIS_AGGR_MIN 2
+// 求最大数
 #define REDIS_AGGR_MAX 3
 #define zunionInterDictValue(_e) (dictGetVal(_e) == NULL ? 1.0 : *(double*)dictGetVal(_e))
 
+// 根据 aggregate 参数的值，决定如何对 *target 和 val 进行聚合计算。
 inline static void zunionInterAggregate(double *target, double val, int aggregate) {
+    // 求和
     if (aggregate == REDIS_AGGR_SUM) {
         *target = *target + val;
         /* The result of adding two doubles is NaN when one variable
@@ -2449,6 +2530,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     int touched = 0;
 
     /* expect setnum input keys to be given */
+    // 取出要处理的有序集合的个数 setnum
     if ((getLongFromObjectOrReply(c, c->argv[2], &setnum, NULL) != C_OK))
         return;
 
@@ -2459,15 +2541,18 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     }
 
     /* test if the expected number of keys would overflow */
+    // setnum 参数和传入的 key 数量不相同，出错
     if (setnum > c->argc-3) {
         addReply(c,shared.syntaxerr);
         return;
     }
 
     /* read keys to be used for input */
+    // 为每个输入 key 创建一个迭代器
     src = zcalloc(sizeof(zsetopsrc) * setnum);
     for (i = 0, j = 3; i < setnum; i++, j++) {
         robj *obj = lookupKeyWrite(c->db,c->argv[j]);
+        // 创建迭代器
         if (obj != NULL) {
             if (obj->type != OBJ_ZSET && obj->type != OBJ_SET) {
                 zfree(src);
@@ -2479,6 +2564,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
             src[i].type = obj->type;
             src[i].encoding = obj->encoding;
         } else {
+            // 不存在的对象设为 NULL
             src[i].subject = NULL;
         }
 
@@ -2488,6 +2574,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
 
     /* parse optional extra arguments */
     if (j < c->argc) {
+        // 分析并读入可选参数
         int remaining = c->argc - j;
 
         while (remaining) {
@@ -2495,6 +2582,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                 !strcasecmp(c->argv[j]->ptr,"weights"))
             {
                 j++; remaining--;
+                // 权重参数
                 for (i = 0; i < setnum; i++, j++, remaining--) {
                     if (getDoubleFromObjectOrReply(c,c->argv[j],&src[i].weight,
                             "weight value is not a float") != C_OK)
@@ -2507,6 +2595,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                        !strcasecmp(c->argv[j]->ptr,"aggregate"))
             {
                 j++; remaining--;
+                // 聚合方式
                 if (!strcasecmp(c->argv[j]->ptr,"sum")) {
                     aggregate = REDIS_AGGR_SUM;
                 } else if (!strcasecmp(c->argv[j]->ptr,"min")) {
@@ -2529,48 +2618,69 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
 
     /* sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
+    // 对所有集合进行排序，以减少算法的常数项
     qsort(src,setnum,sizeof(zsetopsrc),zuiCompareByCardinality);
 
+    // 创建结果集对象
     dstobj = createZsetObject();
     dstzset = dstobj->ptr;
     memset(&zval, 0, sizeof(zval));
 
+    // 交集运算
     if (op == SET_OP_INTER) {
         /* Skip everything if the smallest input is empty. */
+        // 只处理非空集合
         if (zuiLength(&src[0]) > 0) {
             /* Precondition: as src[0] is non-empty and the inputs are ordered
              * by size, all src[i > 0] are non-empty too. */
+            // 遍历基数最小的 src[0] 集合
             zuiInitIterator(&src[0]);
             while (zuiNext(&src[0],&zval)) {
                 double score, value;
 
+                // 计算加权分值
                 score = src[0].weight * zval.score;
                 if (isnan(score)) score = 0;
 
+                // 将 src[0] 集合中的元素和其他集合中的元素做加权聚合计算
                 for (j = 1; j < setnum; j++) {
                     /* It is not safe to access the zset we are
                      * iterating, so explicitly check for equal object. */
+                    // 如果当前迭代到的 src[j] 的对象和 src[0] 的对象一样，
+                    // 那么 src[0] 出现的元素必然也出现在 src[j]
+                    // 那么我们可以直接计算聚合值，
+                    // 不必进行 zuiFind 去确保元素是否出现
+                    // 这种情况在某个 key 输入了两次，
+                    // 并且这个 key 是所有输入集合中基数最小的集合时会出现
                     if (src[j].subject == src[0].subject) {
                         value = zval.score*src[j].weight;
                         zunionInterAggregate(&score,value,aggregate);
+                    // 如果能在其他集合找到当前迭代到的元素，那么进行聚合计算
                     } else if (zuiFind(&src[j],&zval,&value)) {
                         value *= src[j].weight;
                         zunionInterAggregate(&score,value,aggregate);
+                    // 如果当前元素没出现在某个集合，那么跳出 for 循环
+                    // 处理下个元素
                     } else {
                         break;
                     }
                 }
 
                 /* Only continue when present in every input. */
+                // 只在交集元素出现时，才执行以下代码
                 if (j == setnum) {
+                    // 取出值对象
                     tmp = zuiNewSdsFromValue(&zval);
+                    // 加入到有序集合中
                     znode = zslInsert(dstzset->zsl,score,tmp);
+                    // 加入到字典中
                     dictAdd(dstzset->dict,tmp,&znode->score);
                     if (sdslen(tmp) > maxelelen) maxelelen = sdslen(tmp);
                 }
             }
             zuiClearIterator(&src[0]);
         }
+    // 并集运算
     } else if (op == SET_OP_UNION) {
         dict *accumulator = dictCreate(&setAccumulatorDictType,NULL);
         dictIterator *di;
@@ -2580,15 +2690,19 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
         if (setnum) {
             /* Our union is at least as large as the largest set.
              * Resize the dictionary ASAP to avoid useless rehashing. */
+            // 按照最大的集合元素数目扩展字典
             dictExpand(accumulator,zuiLength(&src[setnum-1]));
         }
 
         /* Step 1: Create a dictionary of elements -> aggregated-scores
          * by iterating one sorted set after the other. */
         for (i = 0; i < setnum; i++) {
+            // 如果集合为空直接跳过
             if (zuiLength(&src[i]) == 0) continue;
 
+            // 初始化集合迭代器
             zuiInitIterator(&src[i]);
+            // 将集合中所有元素加入到accumulator中
             while (zuiNext(&src[i],&zval)) {
                 /* Initialize value */
                 score = src[i].weight * zval.score;
@@ -2598,6 +2712,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                 de = dictAddRaw(accumulator,zuiSdsFromValue(&zval),&existing);
                 /* If we don't have it, we need to create a new entry. */
                 if (!existing) {
+                    // 如果没有改元素，添加新的元素
                     tmp = zuiNewSdsFromValue(&zval);
                     /* Remember the longest single element encountered,
                      * to understand if it's possible to convert to ziplist
@@ -2613,6 +2728,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
                      * Here we access directly the dictEntry double
                      * value inside the union as it is a big speedup
                      * compared to using the getDouble/setDouble API. */
+                    //  更新 score
                     zunionInterAggregate(&existing->v.d,score,aggregate);
                 }
             }
@@ -2627,6 +2743,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
          * right size, in order to save rehashing time. */
         dictExpand(dstzset->dict,dictSize(accumulator));
 
+         // 将accumulator中的元素添加到结果集中
         while((de = dictNext(di)) != NULL) {
             sds ele = dictGetKey(de);
             score = dictGetDoubleVal(de);
@@ -2639,10 +2756,14 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
         serverPanic("Unknown operator");
     }
 
+    // 删除已存在的 dstkey ，等待后面用新对象代替它
     if (dbDelete(c->db,dstkey))
         touched = 1;
+        // 如果结果集合的长度不为 0 
     if (dstzset->zsl->length) {
+        // 是否需要对结果集合进行编码转换
         zsetConvertToZiplistIfNeeded(dstobj,maxelelen);
+        // 将结果集合关联到数据库
         dbAdd(c->db,dstkey,dstobj);
         addReplyLongLong(c,zsetLength(dstobj));
         signalModifiedKey(c->db,dstkey);
@@ -2650,6 +2771,7 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
             (op == SET_OP_UNION) ? "zunionstore" : "zinterstore",
             dstkey,c->db->id);
         server.dirty++;
+    // 结果集为空
     } else {
         decrRefCount(dstobj);
         addReply(c,shared.czero);
@@ -2662,10 +2784,12 @@ void zunionInterGenericCommand(client *c, robj *dstkey, int op) {
     zfree(src);
 }
 
+// ZUNIONSTORE 命令，计算给定有序集合间的并集，并将结果放在目标集合中
 void zunionstoreCommand(client *c) {
     zunionInterGenericCommand(c,c->argv[1], SET_OP_UNION);
 }
 
+// ZINTERSTORE 命令，计算给定有序集合间的交集，并将结果放在目标集合中
 void zinterstoreCommand(client *c) {
     zunionInterGenericCommand(c,c->argv[1], SET_OP_INTER);
 }
@@ -2679,9 +2803,11 @@ void zrangeGenericCommand(client *c, int reverse) {
     long llen;
     long rangelen;
 
+    // 取出 start 和 end 参数
     if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != C_OK) ||
         (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) return;
 
+    // 确定是否显示分值
     if (c->argc == 5 && !strcasecmp(c->argv[4]->ptr,"withscores")) {
         withscores = 1;
     } else if (c->argc >= 5) {
@@ -2689,10 +2815,12 @@ void zrangeGenericCommand(client *c, int reverse) {
         return;
     }
 
+     // 取出有序集合对象
     if ((zobj = lookupKeyReadOrReply(c,key,shared.emptyarray)) == NULL
          || checkType(c,zobj,OBJ_ZSET)) return;
 
     /* Sanitize indexes. */
+    // 将负数索引转换为正数索引
     llen = zsetLength(zobj);
     if (start < 0) start = llen+start;
     if (end < 0) end = llen+end;
@@ -2700,6 +2828,7 @@ void zrangeGenericCommand(client *c, int reverse) {
 
     /* Invariant: start >= 0, so this test will be true when end < 0.
      * The range is empty when start > end or start >= length. */
+    // 过滤/调整索引
     if (start > end || start >= llen) {
         addReply(c,shared.emptyarray);
         return;
@@ -2722,6 +2851,7 @@ void zrangeGenericCommand(client *c, int reverse) {
         unsigned int vlen;
         long long vlong;
 
+        // 决定迭代的方向
         if (reverse)
             eptr = ziplistIndex(zl,-2-(2*start));
         else
@@ -2730,6 +2860,7 @@ void zrangeGenericCommand(client *c, int reverse) {
         serverAssertWithInfo(c,zobj,eptr != NULL);
         sptr = ziplistNext(zl,eptr);
 
+        // 取出元素
         while (rangelen--) {
             serverAssertWithInfo(c,zobj,eptr != NULL && sptr != NULL);
             serverAssertWithInfo(c,zobj,ziplistGet(eptr,&vstr,&vlen,&vlong));
@@ -2764,6 +2895,7 @@ void zrangeGenericCommand(client *c, int reverse) {
                 ln = zslGetElementByRank(zsl,start+1);
         }
 
+        // 取出元素
         while(rangelen--) {
             serverAssertWithInfo(c,zobj,ln != NULL);
             ele = ln->ele;
@@ -2777,10 +2909,12 @@ void zrangeGenericCommand(client *c, int reverse) {
     }
 }
 
+// ZRANGE 命令，返回有序集合中指定范围的元素，按分数从低到高排列
 void zrangeCommand(client *c) {
     zrangeGenericCommand(c,0);
 }
 
+// ZREVRANGE 命令，返回有序集合中指定范围的元素，按分数从高到低排列
 void zrevrangeCommand(client *c) {
     zrangeGenericCommand(c,1);
 }
@@ -2805,6 +2939,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         minidx = 2; maxidx = 3;
     }
 
+    // 分析并读入范围
     if (zslParseRange(c->argv[minidx],c->argv[maxidx],&range) != C_OK) {
         addReplyError(c,"min or max is not a float");
         return;
@@ -2812,6 +2947,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
 
     /* Parse optional extra arguments. Note that ZCOUNT will exactly have
      * 4 arguments, so we'll never enter the following code path. */
+    // 分析并读入可选参数
     if (c->argc > 4) {
         int remaining = c->argc - 4;
         int pos = 4;
@@ -2837,6 +2973,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
     }
 
     /* Ok, lookup the key and get the range */
+    // 取出有序集合对象
     if ((zobj = lookupKeyReadOrReply(c,key,shared.emptyarray)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
@@ -2849,6 +2986,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         double score;
 
         /* If reversed, get the last node in range as starting point. */
+        // 迭代的方向
         if (reverse) {
             eptr = zzlLastInRange(zl,&range);
         } else {
@@ -2856,6 +2994,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         }
 
         /* No "first" element in the specified interval. */
+        // 没有元素在指定范围之内
         if (eptr == NULL) {
             addReply(c,shared.emptyarray);
             return;
@@ -2872,6 +3011,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
 
         /* If there is an offset, just traverse the number of elements without
          * checking the score because that is done in the next loop. */
+        // 跳过 offset 指定数量的元素
         while (eptr && offset--) {
             if (reverse) {
                 zzlPrev(zl,&eptr,&sptr);
@@ -2880,10 +3020,13 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
             }
         }
 
+        // 遍历并返回所有在范围内的元素
         while (eptr && limit--) {
+            // 分值
             score = zzlGetScore(sptr);
 
             /* Abort when the node is no longer in range. */
+            // 检查分值是否符合范围
             if (reverse) {
                 if (!zslValueGteMin(score,&range)) break;
             } else {
@@ -2916,6 +3059,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         zskiplistNode *ln;
 
         /* If reversed, get the last node in range as starting point. */
+        // 方向
         if (reverse) {
             ln = zslLastInRange(zsl,&range);
         } else {
@@ -2923,6 +3067,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
         }
 
         /* No "first" element in the specified interval. */
+        // 没有值在指定范围之内
         if (ln == NULL) {
             addReply(c,shared.emptyarray);
             return;
@@ -2935,6 +3080,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
 
         /* If there is an offset, just traverse the number of elements without
          * checking the score because that is done in the next loop. */
+        // 跳过 offset 参数指定的元素数量
         while (ln && offset--) {
             if (reverse) {
                 ln = ln->backward;
@@ -2943,6 +3089,7 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
             }
         }
 
+        // 遍历并返回所有在范围内的元素
         while (ln && limit--) {
             /* Abort when the node is no longer in range. */
             if (reverse) {
@@ -2971,14 +3118,17 @@ void genericZrangebyscoreCommand(client *c, int reverse) {
     setDeferredArrayLen(c, replylen, rangelen);
 }
 
+// ZRANGEBYSCORE 命令，返回有序集合中指定分数范围的元素（闭区间），按分数从低到高排列
 void zrangebyscoreCommand(client *c) {
     genericZrangebyscoreCommand(c,0);
 }
 
+// ZREVRANGEBYSCORE 命令，返回有序集合中指定分数范围的元素（闭区间），按分数从高到低排列
 void zrevrangebyscoreCommand(client *c) {
     genericZrangebyscoreCommand(c,1);
 }
 
+// ZCOUNT 命令，返回分值在[min,max]之间的元素数量
 void zcountCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
@@ -2986,12 +3136,14 @@ void zcountCommand(client *c) {
     unsigned long count = 0;
 
     /* Parse the range arguments */
+    // 分析并读入范围参数
     if (zslParseRange(c->argv[2],c->argv[3],&range) != C_OK) {
         addReplyError(c,"min or max is not a float");
         return;
     }
 
     /* Lookup the sorted set */
+    // 取出有序集合
     if ((zobj = lookupKeyReadOrReply(c, key, shared.czero)) == NULL ||
         checkType(c, zobj, OBJ_ZSET)) return;
 
@@ -3001,26 +3153,32 @@ void zcountCommand(client *c) {
         double score;
 
         /* Use the first element in range as the starting point */
+        // 指向指定范围内第一个元素的成员
         eptr = zzlFirstInRange(zl,&range);
 
         /* No "first" element */
+        // 没有任何元素在这个范围内，直接返回
         if (eptr == NULL) {
             addReply(c, shared.czero);
             return;
         }
 
         /* First element is in range */
+        // 取出分值
         sptr = ziplistNext(zl,eptr);
         score = zzlGetScore(sptr);
         serverAssertWithInfo(c,zobj,zslValueLteMax(score,&range));
 
         /* Iterate over elements in range */
+        // 遍历范围内的所有元素
         while (eptr) {
             score = zzlGetScore(sptr);
 
             /* Abort when the node is no longer in range. */
+            // 如果分值不符合范围，跳出
             if (!zslValueLteMax(score,&range)) {
                 break;
+            // 分值符合范围，增加 count 计数器，然后指向下一个元素
             } else {
                 count++;
                 zzlNext(zl,&eptr,&sptr);
@@ -3033,19 +3191,26 @@ void zcountCommand(client *c) {
         unsigned long rank;
 
         /* Find first element in range */
+        // 指向指定范围内第一个元素
         zn = zslFirstInRange(zsl, &range);
 
         /* Use rank of first element, if any, to determine preliminary count */
+        // 如果有至少一个元素在范围内，那么执行以下代码
         if (zn != NULL) {
+            // 确定范围内第一个元素的排位
             rank = zslGetRank(zsl, zn->score, zn->ele);
             count = (zsl->length - (rank - 1));
 
             /* Find last element in range */
+            // 指向指定范围内的最后一个元素
             zn = zslLastInRange(zsl, &range);
 
             /* Use rank of last element, if any, to determine the actual count */
+            // 如果范围内的最后一个元素不为空，那么执行以下代码
             if (zn != NULL) {
+                // 确定范围内最后一个元素的排位
                 rank = zslGetRank(zsl, zn->score, zn->ele);
+                // 计算第一个和最后一个两个元素之间的元素数量，（包括这两个元素）
                 count -= (zsl->length - rank);
             }
         }
@@ -3056,6 +3221,7 @@ void zcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
+// ZLEXCOUNT 命令，返回有序集合中成员名称在 [min，max] 之间的成员数量
 void zlexcountCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
@@ -3315,14 +3481,17 @@ void genericZrangebylexCommand(client *c, int reverse) {
     setDeferredArrayLen(c, replylen, rangelen);
 }
 
+// ZRANGEBYLEX 命令，返回指定成员区间内的成员，按成员字典正序排序, 要求成员分数必须相同
 void zrangebylexCommand(client *c) {
     genericZrangebylexCommand(c,0);
 }
 
+// ZREVRANGEBYLEX 命令，返回指定成员区间内的成员，按成员字典倒序排序, 要求成员分数必须相同
 void zrevrangebylexCommand(client *c) {
     genericZrangebylexCommand(c,1);
 }
 
+// ZCARD 命令，返回有序集合中的元素个数
 void zcardCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
@@ -3330,17 +3499,21 @@ void zcardCommand(client *c) {
     if ((zobj = lookupKeyReadOrReply(c,key,shared.czero)) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
+    // 返回集合基数
     addReplyLongLong(c,zsetLength(zobj));
 }
 
+// ZSCORE 命令，返回有序集合中指定元素的分数
 void zscoreCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
     double score;
 
+    // 取出有序集合
     if ((zobj = lookupKeyReadOrReply(c,key,shared.null[c->resp])) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
+    // 返回元素分数
     if (zsetScore(zobj,c->argv[2]->ptr,&score) == C_ERR) {
         addReplyNull(c);
     } else {
@@ -3354,10 +3527,12 @@ void zrankGenericCommand(client *c, int reverse) {
     robj *zobj;
     long rank;
 
+    // 取出有序集合
     if ((zobj = lookupKeyReadOrReply(c,key,shared.null[c->resp])) == NULL ||
         checkType(c,zobj,OBJ_ZSET)) return;
 
     serverAssertWithInfo(c,ele,sdsEncodedObject(ele));
+    // 计算排名
     rank = zsetRank(zobj,ele->ptr,reverse);
     if (rank >= 0) {
         addReplyLongLong(c,rank);
@@ -3366,14 +3541,17 @@ void zrankGenericCommand(client *c, int reverse) {
     }
 }
 
+// ZRANK 命令，返回返回有序集合中指定元素的排名，按分数由小到大排列
 void zrankCommand(client *c) {
     zrankGenericCommand(c, 0);
 }
 
+// ZREVRANK 命令，返回返回有序集合中指定元素的排名，按分数由大到小排列
 void zrevrankCommand(client *c) {
     zrankGenericCommand(c, 1);
 }
 
+// ZSCAN 命令，，基于游标的迭代器
 void zscanCommand(client *c) {
     robj *o;
     unsigned long cursor;
@@ -3434,6 +3612,7 @@ void genericZpopCommand(client *c, robj **keyv, int keyc, int where, int emitkey
     if (emitkey) addReplyBulk(c,key);
 
     /* Remove the element. */
+    //循环 count 次，pop 元素
     do {
         if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
             unsigned char *zl = zobj->ptr;
@@ -3443,6 +3622,7 @@ void genericZpopCommand(client *c, robj **keyv, int keyc, int where, int emitkey
             long long vlong;
 
             /* Get the first or last element in the sorted set. */
+            // 根据 where 判断要开始的位置
             eptr = ziplistIndex(zl,where == ZSET_MAX ? -2 : 0);
             serverAssertWithInfo(c,zobj,eptr != NULL);
             serverAssertWithInfo(c,zobj,ziplistGet(eptr,&vstr,&vlen,&vlong));
@@ -3461,6 +3641,7 @@ void genericZpopCommand(client *c, robj **keyv, int keyc, int where, int emitkey
             zskiplistNode *zln;
 
             /* Get the first or last element in the sorted set. */
+            // 根据 where 判断要开始的位置
             zln = (where == ZSET_MAX ? zsl->tail :
                                        zsl->header->level[0].forward);
 
@@ -3487,6 +3668,7 @@ void genericZpopCommand(client *c, robj **keyv, int keyc, int where, int emitkey
         arraylen += 2;
 
         /* Remove the key, if indeed needed. */
+        //如果集合为空，移除 key
         if (zsetLength(zobj) == 0) {
             dbDelete(c->db,key);
             notifyKeyspaceEvent(NOTIFY_GENERIC,"del",key,c->db->id);
@@ -3498,6 +3680,7 @@ void genericZpopCommand(client *c, robj **keyv, int keyc, int where, int emitkey
 }
 
 /* ZPOPMIN key [<count>] */
+// ZPOPMIN 命令，删除并返回有序集合中的最多 count 个具有最低分的元素
 void zpopminCommand(client *c) {
     if (c->argc > 3) {
         addReply(c,shared.syntaxerr);
@@ -3508,6 +3691,7 @@ void zpopminCommand(client *c) {
 }
 
 /* ZMAXPOP key [<count>] */
+// ZMAXPOP 命令，删除并返回有序集合中的最多 count 个具有最高分的元素
 void zpopmaxCommand(client *c) {
     if (c->argc > 3) {
         addReply(c,shared.syntaxerr);
@@ -3535,6 +3719,7 @@ void blockingGenericZpopCommand(client *c, int where) {
             } else {
                 if (zsetLength(o) != 0) {
                     /* Non empty zset, this is like a normal ZPOP[MIN|MAX]. */
+                    // 调用 genericZpopCommand 的实现
                     genericZpopCommand(c,&c->argv[j],1,where,1,NULL);
                     /* Replicate it as an ZPOP[MIN|MAX] instead of BZPOP[MIN|MAX]. */
                     rewriteClientCommandVector(c,2,
@@ -3554,15 +3739,18 @@ void blockingGenericZpopCommand(client *c, int where) {
     }
 
     /* If the keys do not exist we must block */
+    // 如果 key 不存在，则阻塞
     blockForKeys(c,BLOCKED_ZSET,c->argv + 1,c->argc - 2,timeout,NULL,NULL);
 }
 
 // BZPOPMIN key [key ...] timeout
+// BZPOPMIN 命令，是 ZPOPMIN 命令的阻塞版本，可设置阻塞时间
 void bzpopminCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MIN);
 }
 
 // BZPOPMAX key [key ...] timeout
+// BZPOPMAX 命令，是 ZPOPMAX 命令的阻塞版本，可设置阻塞时间
 void bzpopmaxCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MAX);
 }
