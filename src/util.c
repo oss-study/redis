@@ -27,6 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+// 工具库
+
 #include "fmacros.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -248,6 +250,8 @@ long long memtoll(const char *p, int *err) {
 
 /* Return the number of digits of 'v' when converted to string in radix 10.
  * See ll2string() for more information. */
+// 求一个 uint64 数字的长度
+// 真有你的啊 :)
 uint32_t digits10(uint64_t v) {
     if (v < 10) return 1;
     if (v < 100) return 2;
@@ -269,6 +273,7 @@ uint32_t digits10(uint64_t v) {
 }
 
 /* Like digits10() but for signed values. */
+// // 求一个 int64 数字的长度
 uint32_t sdigits10(int64_t v) {
     if (v < 0) {
         /* Abs value of LLONG_MIN requires special handling. */
@@ -291,18 +296,24 @@ uint32_t sdigits10(int64_t v) {
  *
  * Modified in order to handle signed integers since the original code was
  * designed for unsigned integers. */
+// 将一个 long long 类型的数字转换成字符串表示
 int ll2string(char *dst, size_t dstlen, long long svalue) {
+    // 从 00 到 99 的字符数组
+    // 对 100 取模的所有值组成的字符串
     static const char digits[201] =
         "0001020304050607080910111213141516171819"
         "2021222324252627282930313233343536373839"
         "4041424344454647484950515253545556575859"
         "6061626364656667686970717273747576777879"
         "8081828384858687888990919293949596979899";
+    // 负数标记
     int negative;
+    // 将 svalue 换成 value 表示，以解决当 svalue 为 LLONG_MIN 时转成正数时溢出问题
     unsigned long long value;
 
     /* The main loop works with 64bit unsigned integers for simplicity, so
      * we convert the number here and remember if it is negative. */
+    // 判断是否是负数，若是负数则标记，并转成正数表示
     if (svalue < 0) {
         if (svalue != LLONG_MIN) {
             value = -svalue;
@@ -316,6 +327,7 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
     }
 
     /* Check length. */
+    // 长度检查 
     uint32_t const length = digits10(value)+negative;
     if (length >= dstlen) return 0;
 
@@ -323,17 +335,23 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
     uint32_t next = length;
     dst[next] = '\0';
     next--;
+    // 每次取 100 的余数，然后参照 digits 找到对应的字符赋值
     while (value >= 100) {
+        // 乘以 2 可以直接找到下标
         int const i = (value % 100) * 2;
         value /= 100;
+        // 相邻的两位代表取模后对应的字符
         dst[next] = digits[i + 1];
         dst[next - 1] = digits[i];
         next -= 2;
     }
 
     /* Handle last 1-2 digits. */
+    // 处理最后剩下的 1~2 位数字
+    // 个位数 
     if (value < 10) {
         dst[next] = '0' + (uint32_t) value;
+    // 两位数
     } else {
         int i = (uint32_t) value * 2;
         dst[next] = digits[i + 1];
@@ -341,6 +359,7 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
     }
 
     /* Add sign. */
+    // 若为负数，在前头加负号
     if (negative) dst[0] = '-';
     return length;
 }
