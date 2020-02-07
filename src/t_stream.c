@@ -33,6 +33,8 @@
 
 #define STREAM_BYTES_PER_LISTPACK 2048
 
+// 原文注释比较全面，几乎没做改动
+
 /* Every stream item inside the listpack, has a flags field that is used to
  * mark the entry as deleted, or having the same field as the "master"
  * entry at the start of the listpack> */
@@ -1169,6 +1171,7 @@ void streamRewriteApproxMaxlen(client *c, stream *s, int maxlen_arg_idx) {
 }
 
 /* XADD key [MAXLEN [~|=] <count>] <ID or *> [field value] [field value] ... */
+// XADD 命令，向 Streams 追加新元素
 void xaddCommand(client *c) {
     streamID id;
     int id_given = 0; /* Was an ID different than "*" specified? */
@@ -1320,16 +1323,19 @@ void xrangeGenericCommand(client *c, int rev) {
 }
 
 /* XRANGE key start end [COUNT <n>] */
+// XRANGE 命令，返回 Streams 中符合指定 ID 范围的元素，正序排列
 void xrangeCommand(client *c) {
     xrangeGenericCommand(c,0);
 }
 
 /* XREVRANGE key end start [COUNT <n>] */
+// XREVRANGE 命令，返回 Streams 中符合指定 ID 范围的元素，倒叙排列
 void xrevrangeCommand(client *c) {
     xrangeGenericCommand(c,1);
 }
 
 /* XLEN */
+// XLEN 命令，返回 Streams 中的元素数量
 void xlenCommand(client *c) {
     robj *o;
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL
@@ -1346,6 +1352,7 @@ void xlenCommand(client *c) {
  * This is useful because while XREAD is a read command and can be called
  * on slaves, XREAD-GROUP is not. */
 #define XREAD_BLOCKED_DEFAULT_COUNT 1000
+//  XREAD 命令，返回 Streams 中尚未被读取过的，且比指定 ID 大的元素
 void xreadCommand(client *c) {
     long long timeout = -1; /* -1 means, no BLOCK argument given. */
     long long count = 0;
@@ -1361,6 +1368,7 @@ void xreadCommand(client *c) {
     robj *consumername = NULL;
 
     /* Parse arguments. */
+    // 解析参数
     for (int i = 1; i < c->argc; i++) {
         int moreargs = c->argc-i-1;
         char *o = c->argv[i]->ptr;
@@ -1725,6 +1733,7 @@ uint64_t streamDelConsumer(streamCG *cg, sds name) {
  * XGROUP SETID <key> <groupname> <id or $>
  * XGROUP DESTROY <key> <groupname>
  * XGROUP DELCONSUMER <key> <groupname> <consumername> */
+// XGROUP 命令，用来管理消费者组，创建、销毁等
 void xgroupCommand(client *c) {
     const char *help[] = {
 "CREATE      <key> <groupname> <id or $> [opt] -- Create a new consumer group.",
@@ -1898,6 +1907,7 @@ void xsetidCommand(client *c) {
  * Return value of the command is the number of messages successfully
  * acknowledged, that is, the IDs we were actually able to resolve in the PEL.
  */
+// XACK 命令，从 Streams 消费者组的待处理条目列表中删除一条或多条消息
 void xackCommand(client *c) {
     streamCG *group = NULL;
     robj *o = lookupKeyRead(c->db,c->argv[1]);
@@ -1943,6 +1953,7 @@ void xackCommand(client *c) {
  * If start and stop are provided instead, the pending messages are returned
  * with informations about the current owner, number of deliveries and last
  * delivery time and so forth. */
+// XPENDING 命令，返回 Streams 中消费者组的待处理消息
 void xpendingCommand(client *c) {
     int justinfo = c->argc == 3; /* Without the range just outputs general
                                     informations about the PEL. */
@@ -2148,6 +2159,7 @@ void xpendingCommand(client *c) {
  * The command returns an array of messages that the user
  * successfully claimed, so that the caller is able to understand
  * what messages it is now in charge of. */
+// XCLAIM 命令，改变 Streams 待处理消息的消费者所有权
 void xclaimCommand(client *c) {
     streamCG *group = NULL;
     robj *o = lookupKeyRead(c->db,c->argv[1]);
@@ -2339,6 +2351,7 @@ void xclaimCommand(client *c) {
  * Removes the specified entries from the stream. Returns the number
  * of items actually deleted, that may be different from the number
  * of IDs passed in case certain IDs do not exist. */
+// XDEL 命令，从 Streams 中删除指定的元素
 void xdelCommand(client *c) {
     robj *o;
 
@@ -2382,6 +2395,7 @@ void xdelCommand(client *c) {
 
 #define TRIM_STRATEGY_NONE 0
 #define TRIM_STRATEGY_MAXLEN 1
+// MAXLEN 命令，修剪 Streams 中的元素至指定数量
 void xtrimCommand(client *c) {
     robj *o;
 
@@ -2452,6 +2466,7 @@ void xtrimCommand(client *c) {
  * XINFO GROUPS <key>
  * XINFO STREAM <key>
  * XINFO HELP. */
+// XINFO 命令，获取 Streams 或其消费组的信息
 void xinfoCommand(client *c) {
     const char *help[] = {
 "CONSUMERS <key> <groupname>  -- Show consumer groups of group <groupname>.",
