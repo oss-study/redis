@@ -879,7 +879,7 @@ size_t streamRadixTreeMemoryUsage(rax *rax) {
  * Note that the returned value is just an approximation, especially in the
  * case of aggregated data types where only "sample_size" elements
  * are checked and averaged to estimate the total size. */
-//对于集合类型结构，默认取样个数为5
+// 对于集合类型结构，默认取样个数为5
 #define OBJ_COMPUTE_SIZE_DEF_SAMPLES 5 /* Default sample size. */
 // 对 value 计算占用字节大小
 size_t objectComputeSize(robj *o, size_t sample_size) {

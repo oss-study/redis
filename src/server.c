@@ -3434,6 +3434,7 @@ int processCommand(client *c) {
      * condition, to avoid mixing the propagation of scripts with the
      * propagation of DELs due to eviction. */
     if (server.maxmemory && !server.lua_timedout) {
+        // 设置了 maxmemory 时，如果有必要，尝试释放内存(evict)
         int out_of_memory = freeMemoryIfNeededAndSafe() == C_ERR;
         /* freeMemoryIfNeeded may flush slave output buffers. This may result
          * into a slave, that may be the active client, to be freed. */
@@ -3442,6 +3443,7 @@ int processCommand(client *c) {
         /* It was impossible to free enough memory, and the command the client
          * is trying to execute is denied during OOM conditions or the client
          * is in MULTI/EXEC context? Error. */
+         // 如果释放内存失败，并且当前将要执行的命令不允许 OOM（一般是写入类命令）
         if (out_of_memory &&
             (c->cmd->flags & CMD_DENYOOM ||
              (c->flags & CLIENT_MULTI &&
@@ -4880,6 +4882,7 @@ int main(int argc, char **argv) {
 #endif
 
     /* We need to initialize our libraries, and the server configuration. */
+    // 初始化库
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
@@ -4892,7 +4895,9 @@ int main(int argc, char **argv) {
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+    // 检查服务器是否以 Sentinel 模式启动
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+    // 初始化服务器
     initServerConfig();
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */

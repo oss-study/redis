@@ -641,14 +641,23 @@ typedef struct clientReplyBlock {
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
 typedef struct redisDb {
+    // 数据库键空间
     dict *dict;                 /* The keyspace for this DB */
+    // 键的过期时间
     dict *expires;              /* Timeout of keys with a timeout set */
+    // 正处于阻塞状态的键
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
+    // 可以解除阻塞的键
     dict *ready_keys;           /* Blocked keys that received a PUSH */
+    // 正在被 WATCH 命令监视的键
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+    // 数据库 ID 
     int id;                     /* Database ID */
+    // 数据库的键的平均 TTL，统计信息
     long long avg_ttl;          /* Average TTL, just for stats */
+    // 仍存活的过期键游标
     unsigned long expires_cursor; /* Cursor of the active expire cycle. */
+    // 尝试进行碎片整理的键名称列表
     list *defrag_later;         /* List of key names to attempt to defrag one by one, gradually. */
 } redisDb;
 
@@ -1031,21 +1040,32 @@ struct clusterState;
 
 struct redisServer {
     /* General */
+    // 主进程 pid
     pid_t pid;                  /* Main process pid. */
+    // 配置文件的绝对路径
     char *configfile;           /* Absolute config file path, or NULL */
+    // 可执行文件的绝对路径
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
     int dynamic_hz;             /* Change hz value depending on # of clients. */
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
+    // 配置文件的绝对路径
     int hz;                     /* serverCron() calls frequency in hertz */
+    // 数据库数组
     redisDb *db;
+    // 命令表（受到 rename 配置选项的作用）
     dict *commands;             /* Command table */
+    // 命令表（无 rename 配置选项的作用）
     dict *orig_commands;        /* Command table before command renaming. */
+    // 事件状态
     aeEventLoop *el;
+    // 最近一次使用时钟
     _Atomic unsigned int lruclock; /* Clock for LRU eviction */
+    // 关闭服务器的标识
     int shutdown_asap;          /* SHUTDOWN needed ASAP */
+    // 在执行 serverCron() 时进行渐进式 rehash
     int activerehashing;        /* Incremental rehash in serverCron() */
     int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     char *pidfile;              /* PID file path */
@@ -1114,6 +1134,7 @@ struct redisServer {
     time_t stat_starttime;          /* Server start time */
     long long stat_numcommands;     /* Number of processed commands */
     long long stat_numconnections;  /* Number of connections received */
+    // 过期键数量
     long long stat_expiredkeys;     /* Number of expired keys */
     double stat_expired_stale_perc; /* Percentage of keys probably expired */
     long long stat_expired_time_cap_reached_count; /* Early expire cylce stops.*/
@@ -1166,6 +1187,7 @@ struct redisServer {
     int active_defrag_cycle_max;       /* maximal effort for defrag in CPU percentage */
     unsigned long active_defrag_max_scan_fields; /* maximum number of fields of set/hash/zset/list to process from within the main dict scan */
     _Atomic size_t client_max_querybuf_len; /* Limit for client query buffer length */
+    // 数据库的数量
     int dbnum;                      /* Total number of configured DBs */
     int supervised;                 /* 1 if supervised, 0 otherwise. */
     int supervised_mode;            /* See SUPERVISED_* */
@@ -1281,6 +1303,7 @@ struct redisServer {
     /* Replication (slave) */
     char *masteruser;               /* AUTH with this user and masterauth with master */
     char *masterauth;               /* AUTH with this password with master */
+    // 主节点地址
     char *masterhost;               /* Hostname of master */
     int masterport;                 /* Port of master */
     int repl_timeout;               /* Timeout after N seconds of master idle */
@@ -1402,8 +1425,12 @@ struct redisServer {
     int lua_kill;         /* Kill the script if true. */
     int lua_always_replicate_commands; /* Default replication type. */
     /* Lazy free */
+    // 异步删除配置项
+    // 是否异步删除，当内存达到上限分配失败后
     int lazyfree_lazy_eviction;
+    // 是否异步删除过期键
     int lazyfree_lazy_expire;
+    // 是否异步删除 del 命令
     int lazyfree_lazy_server_del;
     /* Latency monitor */
     long long latency_monitor_threshold;

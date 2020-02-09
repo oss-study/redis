@@ -6,6 +6,8 @@
 static size_t lazyfree_objects = 0;
 pthread_mutex_t lazyfree_objects_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// 异步删除实现，配合 bio.c 源文件
+
 /* Return the number of currently pending objects to free. */
 size_t lazyfreeGetPendingObjectsCount(void) {
     size_t aux;
@@ -28,6 +30,7 @@ size_t lazyfreeGetPendingObjectsCount(void) {
  *
  * For lists the function returns the number of elements in the quicklist
  * representing the list. */
+// 获取 val 对象所包含的元素个数
 size_t lazyfreeGetFreeEffort(robj *obj) {
     if (obj->type == OBJ_LIST) {
         quicklist *ql = obj->ptr;
@@ -50,18 +53,28 @@ size_t lazyfreeGetFreeEffort(robj *obj) {
  * If there are enough allocations to free the value object may be put into
  * a lazy free list instead of being freed synchronously. The lazy free list
  * will be reclaimed in a different bio.c thread. */
+// 启用异步删除的阈值
 #define LAZYFREE_THRESHOLD 64
+// 从数据库中删除键值对及其相关信息,
+// 如果有足够的剩余空间来存放值对象，则可以将其放入异步删除任务队列中，而不是同步释放
+// 异步删除列表将在 bio.c 线程中释放
 int dbAsyncDelete(redisDb *db, robj *key) {
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
+    // 从 expires 字典中删除过期键并不会释放内存空间，因为这个对象被数据库字典共享.
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
 
     /* If the value is composed of a few allocations, to free in a lazy way
      * is actually just slower... So under a certain limit we just free
      * the object synchronously. */
+    // 如果这个值的元素数量很少，异步删除将会很慢,因此同步释放对象
+    // 从字典中解除绑定但不释放内存
     dictEntry *de = dictUnlink(db->dict,key->ptr);
+
     if (de) {
+        // 获取节点值
         robj *val = dictGetVal(de);
+        // 获取节点所包含的元素个数
         size_t free_effort = lazyfreeGetFreeEffort(val);
 
         /* If releasing the object is too much work, do it in the background
@@ -73,8 +86,11 @@ int dbAsyncDelete(redisDb *db, robj *key) {
          * through and reach the dictFreeUnlinkedEntry() call, that will be
          * equivalent to just calling decrRefCount(). */
         if (free_effort > LAZYFREE_THRESHOLD && val->refcount == 1) {
+            // 原子操作给 lazyfree_objects 加1，以备 info 命令查看后台线程有多少对象待删除
             atomicIncr(lazyfree_objects,1);
+            // 把对象 val 丢到后台线程的任务队列中
             bioCreateBackgroundJob(BIO_LAZY_FREE,val,NULL,NULL);
+            // 把字典节点的指针设置为 NULL
             dictSetVal(db->dict,de,NULL);
         }
     }
@@ -82,6 +98,7 @@ int dbAsyncDelete(redisDb *db, robj *key) {
     /* Release the key-val pair, or just the key if we set the val
      * field to NULL in order to lazy free it later. */
     if (de) {
+        // 释放数据库字典节点
         dictFreeUnlinkedEntry(db->dict,de);
         if (server.cluster_enabled) slotToKeyDel(key);
         return 1;

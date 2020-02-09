@@ -43,21 +43,35 @@
 /* Helper function for the activeExpireCycle() function.
  * This function will try to expire the key that is stored in the hash table
  * entry 'de' of the 'expires' hash table of a Redis database.
+ * 
+ * activeExpireCycle() 函数的辅助函数，
+ * 这个函数会检查存储在 'expires' 哈希表节点 'de' 中的键是否过期。
  *
  * If the key is found to be expired, it is removed from the database and
  * 1 is returned. Otherwise no operation is performed and 0 is returned.
+ * 
+ * 如果这个键被发现过期。它将会从数据库中移除并返回 1，否则返回 0。
  *
  * When a key is expired, server.stat_expiredkeys is incremented.
+ * 
+ * 当一个键过期被销毁，server.stat_expiredkeys 值将会增长。
  *
+ * 'now' 参数是当前的时间（毫秒级），该函数可以避免太多的 gettimeofday() 系统调用。
+ * 
  * The parameter 'now' is the current time in milliseconds as is passed
  * to the function to avoid too many gettimeofday() syscalls. */
 int activeExpireCycleTryExpire(redisDb *db, dictEntry *de, long long now) {
+    // 获取过期时间
     long long t = dictGetSignedIntegerVal(de);
+    // 如果过期
     if (now > t) {
+        // 创建字符串对象
         sds key = dictGetKey(de);
         robj *keyobj = createStringObject(key,sdslen(key));
 
+        // 将过期信息传播到附属节点和 AOF 文件
         propagateExpire(db,keyobj,server.lazyfree_lazy_expire);
+        // 如果是异步删除
         if (server.lazyfree_lazy_expire)
             dbAsyncDelete(db,keyobj);
         else
@@ -77,22 +91,37 @@ int activeExpireCycleTryExpire(redisDb *db, dictEntry *de, long long now) {
  * will use few CPU cycles if there are few expiring keys, otherwise
  * it will get more aggressive to avoid that too much memory is used by
  * keys that can be removed from the keyspace.
+ * 
+ * 函数尝试删除数据库中已经过期的键。
+ * 当带有过期时间的键比较少时，函数运行得比较保守，
+ * 如果带有过期时间的键比较多，那么函数会以更积极的方式来删除过期键，
+ * 从而可能地释放被过期键占用的内存。
  *
  * Every expire cycle tests multiple databases: the next call will start
  * again from the next db, with the exception of exists for time limit: in that
  * case we restart again from the last database we were processing. Anyway
  * no more than CRON_DBS_PER_CALL databases are tested at every iteration.
+ * 
+ * 每次循环中被测试的数据库数目不会超过 CRON_DBS_PER_CALL 。
  *
  * The function can perform more or less work, depending on the "type"
  * argument. It can execute a "fast cycle" or a "slow cycle". The slow
  * cycle is the main way we collect expired cycles: this happens with
  * the "server.hz" frequency (usually 10 hertz).
+ * 
+ * 该函数执行的工作量取决于 type 参数。
+ * 它可以执行“快速循环”或“慢速循环”模式。
+ * 慢循环是主要的工作模式：这种情况以 server.hz 频率发生（每秒执行次数，通常为 10）
  *
  * However the slow cycle can exit for timeout, since it used too much time.
  * For this reason the function is also invoked to perform a fast cycle
  * at every event loop cycle, in the beforeSleep() function. The fast cycle
  * will try to perform less work, but will do it much more often.
  *
+ * 但是如果慢循环执行了太长时间将会因超时而退出
+ * 因此，在每个事件循环周期中也可以执行执行快速循环
+ * 快速循环每次将执行较少的工作量，但执行频率会增加
+ * 
  * The following are the details of the two expire cycles and their stop
  * conditions:
  *
@@ -101,6 +130,11 @@ int activeExpireCycleTryExpire(redisDb *db, dictEntry *de, long long now) {
  * microseconds, and is not repeated again before the same amount of time.
  * The cycle will also refuse to run at all if the latest slow cycle did not
  * terminate because of a time limit condition.
+ * 
+ * 如果循环的类型为 ACTIVE_EXPIRE_CYCLE_FAST ，那么函数会以“快速循环”模式执行，
+ * 执行的时间不会长过 EXPIRE_FAST_CYCLE_DURATION 毫秒，
+ * 并且在 EXPIRE_FAST_CYCLE_DURATION 毫秒之内不会再重新执行。
+ * 如果最近一次的慢速循环因为超时被终止，那么本次快循环也会拒绝运行。
  *
  * If type is ACTIVE_EXPIRE_CYCLE_SLOW, that normal expire cycle is
  * executed, where the time limit is a percentage of the REDIS_HZ period
@@ -109,7 +143,14 @@ int activeExpireCycleTryExpire(redisDb *db, dictEntry *de, long long now) {
  * of already expired keys in the database is estimated to be lower than
  * a given percentage, in order to avoid doing too much work to gain too
  * little memory.
- *
+ * 
+ * 如果循环的类型为 ACTIVE_EXPIRE_CYCLE_SLOW ，那么函数会以“慢循环”模式执行，
+ * 函数的执行时限为 REDIS_HZ 常量的一个百分比，
+ * 这个百分比由 REDIS_EXPIRELOOKUPS_TIME_PERC 定义。
+ * 在快速循环中，一旦数据库中已过期密钥的数量低于给定百分比将会停止检查
+ * 以避免做很多的工作而回收很少的内存空间。
+ * 
+ * effort 是一个可配置的基数，以让程序执行更多的时间
  * The configured expire "effort" will modify the baseline parameters in
  * order to do more work in both the fast and slow expire cycles.
  */

@@ -320,6 +320,7 @@ robj *dbRandomKey(redisDb *db) {
 }
 
 /* Delete a key, value, and associated expiration entry if any, from the DB */
+// 从数据库中删除键值对及其相关信息
 int dbSyncDelete(redisDb *db, robj *key) {
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
@@ -450,9 +451,11 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
     return emptyDbGeneric(server.db, dbnum, flags, callback);
 }
 
+// 切换数据库
 int selectDb(client *c, int id) {
     if (id < 0 || id >= server.dbnum)
         return C_ERR;
+    // 设置当前 client 使用的数据库
     c->db = &server.db[id];
     return C_OK;
 }
@@ -591,6 +594,7 @@ void unlinkCommand(client *c) {
 
 /* EXISTS key1 key2 ... key_N.
  * Return value is the number of keys existing. */
+// EXISTS 命令，检查数据库是否存在键
 void existsCommand(client *c) {
     long long count = 0;
     int j;
@@ -601,9 +605,11 @@ void existsCommand(client *c) {
     addReplyLongLong(c,count);
 }
 
+// SELECT 命令，切换当前客户端使用的数据库
 void selectCommand(client *c) {
     long id;
 
+    // 不合法的数据库号码
     if (getLongFromObjectOrReply(c, c->argv[1], &id,
         "invalid DB index") != C_OK)
         return;
@@ -1227,7 +1233,14 @@ long long getExpire(redisDb *db, robj *key) {
 /* Propagate expires into slaves and the AOF file.
  * When a key expires in the master, a DEL operation for this key is sent
  * to all the slaves and the AOF file if enabled.
- *
+ * 
+ * 将过期信息传播到附属节点和 AOF 文件。
+ * 当一个键在主节点中过期时，主节点会向所有附属节点和 AOF 文件传播一个显式的 DEL 命令。
+ * 
+ * 这种做法使得对键的过期可以集中处理，
+ * 因为 AOF 以及主节点和附属节点之间的链接，都可以保证操作的执行顺序，
+ * 所以即使有写操作对过期键执行，所有数据都还是 consistent 的。
+ * 
  * This way the key expiry is centralized in one place, and since both
  * AOF and the master->slave link guarantee operation ordering, everything
  * will be consistent even if we allow write operations against expiring
@@ -1235,13 +1248,16 @@ long long getExpire(redisDb *db, robj *key) {
 void propagateExpire(redisDb *db, robj *key, int lazy) {
     robj *argv[2];
 
+    // 构造一个 DEL key 命令
     argv[0] = lazy ? shared.unlink : shared.del;
     argv[1] = key;
     incrRefCount(argv[0]);
     incrRefCount(argv[1]);
 
+    // 传播到 AOF 
     if (server.aof_state != AOF_OFF)
         feedAppendOnlyFile(server.delCommand,db->id,argv,2);
+    // 传播到所有附属节点
     replicationFeedSlaves(server.slaves,db->id,argv,2);
 
     decrRefCount(argv[0]);
@@ -1306,7 +1322,15 @@ int keyIsExpired(redisDb *db, robj *key) {
  *
  * The return value of the function is 0 if the key is still valid,
  * otherwise the function returns 1 if the key is expired. */
+/*
+ * 检查 key 是否已经过期，如果是的话，将它从数据库中删除。
+ *
+ * 返回 0 表示键没有过期时间，或者键未过期。
+ *
+ * 返回 1 表示键已经因为过期而被删除了。
+ */
 int expireIfNeeded(redisDb *db, robj *key) {
+    // 键没有过期返回 0 
     if (!keyIsExpired(db,key)) return 0;
 
     /* If we are running in the context of a slave, instead of
@@ -1317,6 +1341,8 @@ int expireIfNeeded(redisDb *db, robj *key) {
      * Still we try to return the right information to the caller,
      * that is, 0 if we think the key should be still valid, 1 if
      * we think the key is expired at this time. */
+    // 如果当前节点不是主节点返回 1
+    // 返回 1 并不是一个确切的信息，但作者觉得要比返回 0 更准确一些
     if (server.masterhost != NULL) return 1;
 
     /* Delete the key */
