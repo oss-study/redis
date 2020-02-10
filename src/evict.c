@@ -69,6 +69,7 @@ static struct evictionPoolEntry *EvictionPoolLRU;
  * object->lru field of redisObject structures. */
 // 获取 lru 计数器
 unsigned int getLRUClock(void) {
+    // 当计算出的当前clock超出 LRU_CLOCK_MAX 时，就会再次从 0 开始数
     return (mstime()/LRU_CLOCK_RESOLUTION) & LRU_CLOCK_MAX;
 }
 
@@ -78,9 +79,11 @@ unsigned int getLRUClock(void) {
  * precomputed value, otherwise we need to resort to a system call. */
 unsigned int LRU_CLOCK(void) {
     unsigned int lruclock;
+    // 如果当前系统的精确度较高，则使用系统的时间戳(server.lruclock)
     if (1000/server.hz <= LRU_CLOCK_RESOLUTION) {
         lruclock = server.lruclock;
     } else {
+        // 调用系统的 mstime() 函数重新计算
         lruclock = getLRUClock();
     }
     return lruclock;
@@ -298,6 +301,7 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
 /* Return the current time in minutes, just taking the least significant
  * 16 bits. The returned time is suitable to be stored as LDT (last decrement
  * time) for the LFU implementation. */
+// 高 16 位，当server.unixtime超出 2^16 时，再次从0开始计数
 unsigned long LFUGetTimeInMinutes(void) {
     return (server.unixtime/60) & 65535;
 }
@@ -306,6 +310,7 @@ unsigned long LFUGetTimeInMinutes(void) {
  * that elapsed since the last access. Handle overflow (ldt greater than
  * the current 16 bits minutes time) considering the time as wrapping
  * exactly once. */
+// 键的空闲时间(分钟)
 unsigned long LFUTimeElapsed(unsigned long ldt) {
     unsigned long now = LFUGetTimeInMinutes();
     if (now >= ldt) return now-ldt;
@@ -314,6 +319,11 @@ unsigned long LFUTimeElapsed(unsigned long ldt) {
 
 /* Logarithmically increment a counter. The greater is the current counter value
  * the less likely is that it gets really implemented. Saturate it at 255. */
+/* 基于概率的对数计数器：
+  1. 生成 0 到 1 之间的随机数 r。
+  2. 计算 counter++ 的概率 P = 1/(old_value*lfu_log_factor+1).
+  3. 如果 r < P，则 counter++
+ */
 uint8_t LFULogIncr(uint8_t counter) {
     if (counter == 255) return 255;
     double r = (double)rand()/RAND_MAX;
@@ -334,6 +344,10 @@ uint8_t LFULogIncr(uint8_t counter) {
  * This function is used in order to scan the dataset for the best object
  * to fit: as we check for the candidate, we incrementally decrement the
  * counter of the scanned objects if needed. */
+/* 在key被访问时，在 counter++ 之前，要根据 lfu_decay_time 对 counter 做适当的修减：
+  num_periods = 空闲时间/lfu_decay_time > 0
+  counter = (num_periods > counter) ? 0 : counter - num_periods;
+ */
 unsigned long LFUDecrAndReturn(robj *o) {
     unsigned long ldt = o->lru >> 8;
     unsigned long counter = o->lru & 255;
@@ -460,15 +474,18 @@ int freeMemoryIfNeeded(void) {
      * POV of clients not being able to write, but also from the POV of
      * expires and evictions of keys not being performed. */
     if (clientsArePaused()) return C_OK;
+    // 获取内存使用状态，如果未达到 maxmemory，直接返回
     if (getMaxmemoryState(&mem_reported,NULL,&mem_tofree,NULL) == C_OK)
         return C_OK;
 
     mem_freed = 0;
 
+    // 如果占用内存比 maxmemory 要大，但是 maxmemory 策略为不淘汰，那么执行 cant_free
     if (server.maxmemory_policy == MAXMEMORY_NO_EVICTION)
         goto cant_free; /* We need to free memory, but policy forbids. */
 
     latencyStartMonitor(latency);
+    // 根据 maxmemory 策略，遍历字典，释放内存并记录被释放内存的字节数
     while (mem_freed < mem_tofree) {
         int j, k, i;
         static unsigned int next_db = 0;

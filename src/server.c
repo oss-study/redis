@@ -3481,7 +3481,7 @@ int processCommand(client *c) {
      * condition, to avoid mixing the propagation of scripts with the
      * propagation of DELs due to eviction. */
     if (server.maxmemory && !server.lua_timedout) {
-        // 设置了 maxmemory 时，如果有必要，尝试释放内存(evict)
+        // 设置了 maxmemory 时，如果有必要，尝试释放内存
         int out_of_memory = freeMemoryIfNeededAndSafe() == C_ERR;
         /* freeMemoryIfNeeded may flush slave output buffers. This may result
          * into a slave, that may be the active client, to be freed. */
