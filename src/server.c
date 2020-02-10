@@ -1679,11 +1679,16 @@ void clientsCron(void) {
 /* This function handles 'background' operations we are required to do
  * incrementally in Redis databases, such as active key expiring, resizing,
  * rehashing. */
+// 对数据库执行删除过期键，调整大小，以及主动和渐进式 rehash
 void databasesCron(void) {
+    // 函数先从数据库中删除过期键，然后再对数据库的大小进行修改
+
     /* Expire keys by random sampling. Not required for slaves
      * as master will synthesize DELs for us. */
+    // 默认慢循环，那么执行主动过期键清除
     if (server.active_expire_enabled) {
         if (server.masterhost == NULL) {
+            // 清除模式为 CYCLE_SLOW ，这个模式会尽量多清除过期键
             activeExpireCycle(ACTIVE_EXPIRE_CYCLE_SLOW);
         } else {
             expireSlaveKeys();
@@ -1742,6 +1747,7 @@ void databasesCron(void) {
  * info or not using the 'update_daylight_info' argument. Normally we update
  * such info only when calling this function from serverCron() but not when
  * calling it from call(). */
+// 更新缓存时间
 void updateCachedTime(int update_daylight_info) {
     server.ustime = ustime();
     server.mstime = server.ustime / 1000;
@@ -1817,19 +1823,44 @@ void checkChildrenDone(void) {
 }
 
 /* This is our timer interrupt, called server.hz times per second.
+ * 
+ * 这是 Redis 的定时中断器，每秒调用 server.hz 次。
+ * 
  * Here is where we do a number of things that need to be done asynchronously.
  * For instance:
  *
+ * 以下是需要异步执行的操作：
+ * 
  * - Active expired keys collection (it is also performed in a lazy way on
  *   lookup).
+ *   主动清除过期键。
+ * 
  * - Software watchdog.
+ *   更新软件 watchdog 信息。
+ * 
  * - Update some statistic.
+ *   更新统计信息。
+ * 
  * - Incremental rehashing of the DBs hash tables.
+ *   对数据库进行渐增式 Rehash
+ * 
  * - Triggering BGSAVE / AOF rewrite, and handling of terminated children.
+ *   触发 BGSAVE 或者 AOF 重写，并处理之后由 BGSAVE 和 AOF 重写引发的子进程停止。
+ * 
  * - Clients timeout of different kinds.
- * - Replication reconnection.
- * - Many more...
+ *   处理客户端超时。
  *
+ * - Replication reconnection.
+ *   复制重连
+ *
+ * - Many more...
+ *   其他。。。
+ * 
+ * 因为 serverCron 函数中的所有代码都会每秒调用 server.hz 次，
+ * 为了对部分代码的调用次数进行限制，
+ * 使用了一个宏 run_with_period(milliseconds) { ... } ，
+ * 这个宏可以将被包含代码的执行次数降低为每 milliseconds 执行一次。
+ * 
  * Everything directly called here will be called server.hz times per second,
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
@@ -1864,6 +1895,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
+    // 每 100 ms 执行一次
     run_with_period(100) {
         trackInstantaneousMetric(STATS_METRIC_COMMAND,server.stat_numcommands);
         trackInstantaneousMetric(STATS_METRIC_NET_INPUT,
@@ -1881,11 +1913,14 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * touched for all the time needed to the counter to wrap, which is
      * not likely.
      *
+     * LRU 时间的精度可以通过修改 REDIS_LRU_CLOCK_RESOLUTION 常量来改变。
+     * 
      * Note that you can change the resolution altering the
      * LRU_CLOCK_RESOLUTION define. */
     server.lruclock = getLRUClock();
 
     /* Record the max memory used since the server was started. */
+    // 记录服务器的内存峰值
     if (zmalloc_used_memory() > server.stat_peak_memory)
         server.stat_peak_memory = zmalloc_used_memory();
 
@@ -1919,20 +1954,28 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
+    // 服务器进程收到 SIGTERM 信号，关闭服务器
     if (server.shutdown_asap) {
+        // 尝试关闭服务器
         if (prepareForShutdown(SHUTDOWN_NOFLAGS) == C_OK) exit(0);
+        // 如果关闭失败，那么打印 LOG ，并移除关闭标识
         serverLog(LL_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
 
     /* Show some info about non-empty databases */
+    // 打印数据库的键值对信息
     run_with_period(5000) {
         for (j = 0; j < server.dbnum; j++) {
             long long size, used, vkeys;
 
+            // 可用键值对的数量
             size = dictSlots(server.db[j].dict);
+            // 已用键值对的数量
             used = dictSize(server.db[j].dict);
+            // 带有过期时间的键值对数量
             vkeys = dictSize(server.db[j].expires);
+            // LOG 打印数量
             if (used || vkeys) {
                 serverLog(LL_VERBOSE,"DB %d: %lld keys (%lld volatile) in %lld slots HT.",j,used,vkeys,size);
                 /* dictPrintStats(server.dict); */
@@ -1941,6 +1984,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* Show information about connected clients */
+    // 如果服务器没有运行在 SENTINEL 模式下，那么打印客户端的连接信息
     if (!server.sentinel_mode) {
         run_with_period(5000) {
             serverLog(LL_DEBUG,
@@ -1952,9 +1996,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* We need to do a few operations on clients asynchronously. */
+    // 检查客户端，关闭超时客户端，并释放客户端多余的缓冲区
     clientsCron();
 
     /* Handle background operations on Redis databases. */
+    // 对数据库执行各种操作
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
@@ -2821,6 +2867,7 @@ void initServer(void) {
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
+    // 为 serverCron() 创建时间事件
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");
         exit(1);

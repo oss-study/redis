@@ -359,6 +359,7 @@ typedef long long ustime_t; /* microsecond time type. */
 /* Redis maxmemory strategies. Instead of using just incremental number
  * for this defines, we use a set of flags so that testing for certain
  * properties common to multiple policies is faster. */
+// 最大内存用量
 #define MAXMEMORY_FLAG_LRU (1<<0)
 #define MAXMEMORY_FLAG_LFU (1<<1)
 #define MAXMEMORY_FLAG_ALLKEYS (1<<2)
@@ -375,6 +376,7 @@ typedef long long ustime_t; /* microsecond time type. */
 #define MAXMEMORY_NO_EVICTION (7<<8)
 
 /* Units */
+// 秒级或毫秒级
 #define UNIT_SECONDS 0
 #define UNIT_MILLISECONDS 1
 
@@ -1047,7 +1049,9 @@ struct redisServer {
     // 可执行文件的绝对路径
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
+    // 动态执行频率
     int dynamic_hz;             /* Change hz value depending on # of clients. */
+    // 配置执行频率
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */

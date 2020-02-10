@@ -525,19 +525,31 @@ void flushSlaveKeysWithExpireList(void) {
  * the "basetime" argument is used to signal what the base time is (either 0
  * for *AT variants of the command, or the current time for relative expires).
  *
+ * 这个函数是 EXPIRE 、 PEXPIRE 、 EXPIREAT 和 PEXPIREAT 命令的底层实现函数。
+ *
+ * 命令的第二个参数可能是绝对值，也可能是相对值。
+ * 当执行 *AT 命令时， basetime 为 0 ，在其他情况下，它保存的就是当前的绝对时间。
+ *
+ * unit 用于指定 argv[2] （传入过期时间）的格式，
+ * 它可以是 UNIT_SECONDS 或 UNIT_MILLISECONDS ，
+ * basetime 参数则总是毫秒格式的。
+ * 
  * unit is either UNIT_SECONDS or UNIT_MILLISECONDS, and is only used for
  * the argv[2] parameter. The basetime is always specified in milliseconds. */
 void expireGenericCommand(client *c, long long basetime, int unit) {
     robj *key = c->argv[1], *param = c->argv[2];
     long long when; /* unix time in milliseconds when the key will expire. */
 
+    // 取出 when 参数
     if (getLongLongFromObjectOrReply(c, param, &when, NULL) != C_OK)
         return;
 
+    // 如果传入的过期时间是以秒为单位的，那么将它转换为毫秒
     if (unit == UNIT_SECONDS) when *= 1000;
     when += basetime;
 
     /* No key, return zero. */
+    // 取出键
     if (lookupKeyWrite(c->db,key) == NULL) {
         addReply(c,shared.czero);
         return;
@@ -547,9 +559,17 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
      * should never be executed as a DEL when load the AOF or in the context
      * of a slave instance.
      *
+     * 在载入数据时，或者服务器为附属节点时，
+     * 即使 EXPIRE 的 TTL 为负数，或者 EXPIREAT 提供的时间戳已经过期，
+     * 服务器也不会主动删除这个键，而是等待主节点发来显式的 DEL 命令。
+     * 
+     * 程序会继续将（一个可能已经过期的 TTL）设置为键的过期时间，
+     * 并且等待主节点发来 DEL 命令。
+     * 
      * Instead we take the other branch of the IF statement setting an expire
      * (possibly in the past) and wait for an explicit DEL from the master. */
     if (when <= mstime() && !server.loading && !server.masterhost) {
+        // when 提供的时间已经过期，服务器为主节点，并且没在载入数据
         robj *aux;
 
         int deleted = server.lazyfree_lazy_expire ? dbAsyncDelete(c->db,key) :
@@ -558,6 +578,7 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
         server.dirty++;
 
         /* Replicate/AOF this as an explicit DEL or UNLINK. */
+        // 传播 DEL 命令
         aux = server.lazyfree_lazy_expire ? shared.unlink : shared.del;
         rewriteClientCommandVector(c,2,aux,key);
         signalModifiedKey(c->db,key);
@@ -565,6 +586,9 @@ void expireGenericCommand(client *c, long long basetime, int unit) {
         addReply(c, shared.cone);
         return;
     } else {
+        // 设置键的过期时间
+        // 如果服务器为附属节点，或者服务器正在载入，
+        // 那么这个 when 有可能已经过期的
         setExpire(c,c->db,key,when);
         addReply(c,shared.cone);
         signalModifiedKey(c->db,key);
@@ -595,6 +619,15 @@ void pexpireatCommand(client *c) {
 }
 
 /* Implements TTL and PTTL */
+/*
+ * 返回键的剩余生存时间。
+ *
+ * output_ms 指定返回值的格式：
+ *
+ *  - 为 1 时，返回毫秒
+ *
+ *  - 为 0 时，返回秒
+ */
 void ttlGenericCommand(client *c, int output_ms) {
     long long expire, ttl = -1;
 
@@ -605,14 +638,19 @@ void ttlGenericCommand(client *c, int output_ms) {
     }
     /* The key exists. Return -1 if it has no expire, or the actual
      * TTL value otherwise. */
+    // 取出过期时间
     expire = getExpire(c->db,c->argv[1]);
     if (expire != -1) {
+        // 计算剩余生存时间
         ttl = expire-mstime();
         if (ttl < 0) ttl = 0;
     }
     if (ttl == -1) {
+        // 键是持久的
         addReplyLongLong(c,-1);
     } else {
+        // 返回 TTL 
+        // (ttl+500)/1000 计算的是渐近秒数
         addReplyLongLong(c,output_ms ? ttl : ((ttl+500)/1000));
     }
 }
@@ -630,12 +668,14 @@ void pttlCommand(client *c) {
 /* PERSIST key */
 void persistCommand(client *c) {
     if (lookupKeyWrite(c->db,c->argv[1])) {
+        // 键带有过期时间，那么将它移除
         if (removeExpire(c->db,c->argv[1])) {
             addReply(c,shared.cone);
             server.dirty++;
         } else {
             addReply(c,shared.czero);
         }
+    // 键已经是持久的了
     } else {
         addReply(c,shared.czero);
     }
